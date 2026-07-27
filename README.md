@@ -178,14 +178,14 @@ Telegram и серверу: переключатель «Смотреть как
 
 ```powershell
 Set-Location webapp
-npm install
-npm run dev
+npm.cmd install
+npm.cmd run dev
 ```
 
 Для проверки production-сборки:
 
 ```powershell
-npm run build
+npm.cmd run build
 ```
 
 ## Игра «Угадай звук»
