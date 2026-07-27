@@ -20,6 +20,7 @@ from .rules import (
     MAX_UNIQUE_OPTIONS,
     clean_guess,
     normalize_guess,
+    selected_poll_option_indexes,
     update_poll_vote,
     voters_grouped_by_option,
     winning_users,
@@ -187,21 +188,21 @@ def register(
                 multiple_choice=True,
                 close_period=VOTE_SECONDS,
             )
-            round_state.poll_id = poll.id
             round_state.poll_option_indexes = {
                 answer.option: index
                 for index, answer in enumerate(poll_answers)
             }
-            polls_by_id[poll.id] = round_state
-            try:
-                await client.send_file(
-                    chat,
-                    types.InputMediaPoll(poll=poll),
-                    reply_to=round_state.topic_id,
-                )
-            except Exception:
-                polls_by_id.pop(poll.id, None)
-                raise
+            poll_message = await client.send_file(
+                chat,
+                types.InputMediaPoll(poll=poll),
+                reply_to=round_state.topic_id,
+            )
+            if not isinstance(poll_message.media, types.MessageMediaPoll):
+                raise RuntimeError("Telegram не вернул отправленный опрос")
+            # Источником истины служит серверный ID из отправленного сообщения:
+            # он может не совпасть с ID, заданным в InputMediaPoll.
+            round_state.poll_id = poll_message.media.poll.id
+            polls_by_id[round_state.poll_id] = round_state
             await asyncio.sleep(VOTE_SECONDS + 2)
 
             voters_by_option = voters_grouped_by_option(
@@ -256,11 +257,11 @@ def register(
         round_state = polls_by_id.get(update.poll_id)
         if round_state is None:
             return
-        selected_options = {
-            round_state.poll_option_indexes[option]
-            for option in update.options
-            if option in round_state.poll_option_indexes
-        }
+        selected_options = selected_poll_option_indexes(
+            getattr(update, "positions", None),
+            update.options,
+            round_state.poll_option_indexes,
+        )
         update_poll_vote(
             round_state.poll_votes_by_user,
             update.peer.user_id,

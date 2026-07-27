@@ -13,6 +13,7 @@ from games.guess_sound.freesound import _search_filter
 from games.guess_sound.models import GuessOption
 from games.guess_sound.rules import (
     normalize_guess,
+    selected_poll_option_indexes,
     update_poll_vote,
     voters_grouped_by_option,
     winning_users,
@@ -86,6 +87,26 @@ class GuessRulesTest(unittest.TestCase):
         votes_by_user = {10: {0, 1}}
         update_poll_vote(votes_by_user, 10, set())
         self.assertEqual(votes_by_user, {})
+
+    def test_poll_positions_are_used_for_multiple_choice(self) -> None:
+        self.assertEqual(
+            selected_poll_option_indexes(
+                positions=[0, 2],
+                options=[b"unexpected"],
+                option_indexes={b"\x00": 0, b"\x02": 2},
+            ),
+            {0, 2},
+        )
+
+    def test_poll_options_are_fallback_for_older_updates(self) -> None:
+        self.assertEqual(
+            selected_poll_option_indexes(
+                positions=None,
+                options=[b"\x00", b"\x02"],
+                option_indexes={b"\x00": 0, b"\x02": 2},
+            ),
+            {0, 2},
+        )
 
     def test_poll_shape_is_supported_by_installed_telethon(self) -> None:
         answer = types.PollAnswer(

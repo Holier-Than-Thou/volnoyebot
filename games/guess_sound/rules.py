@@ -60,3 +60,18 @@ def voters_grouped_by_option(
         for option_index in selected_options:
             voters_by_option.setdefault(option_index, set()).add(user_id)
     return voters_by_option
+
+
+def selected_poll_option_indexes(
+    positions: list[int] | None,
+    options: list[bytes],
+    option_indexes: dict[bytes, int],
+) -> set[int]:
+    """Получить выбранные индексы из события с совместимым fallback."""
+    if positions:
+        return {int(position) for position in positions}
+    return {
+        option_indexes[option]
+        for option in options
+        if option in option_indexes
+    }
