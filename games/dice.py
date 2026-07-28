@@ -9,6 +9,8 @@ from telethon import events
 from telethon.tl import types
 from telethon.tl.types import Channel, Chat, MessageMediaDice, User
 
+from .casino import is_explicit_message_reply, message_topic_id
+
 
 DICE_ANIMATION_SECONDS = 3.0
 CHALLENGE_TTL_SECONDS = 60
@@ -79,14 +81,16 @@ def register(client, store, display_name, schedule_delete):
 
     @client.on(events.NewMessage(pattern=r"(?i)^кости\s+(\d+)\s*$"))
     async def dice_challenge_command(event) -> None:
-        if not event.is_group or not event.is_reply:
+        if not event.is_group or not is_explicit_message_reply(event.message):
             return
 
         sender = await event.get_sender()
         chat = await event.get_chat()
         if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
             return
-        if not await store.is_chat_enabled(event.chat_id):
+        if not await store.is_topic_enabled(
+            event.chat_id, message_topic_id(event.message)
+        ):
             return
 
         stake = int(event.pattern_match.group(1))
@@ -141,14 +145,16 @@ def register(client, store, display_name, schedule_delete):
 
     @client.on(events.NewMessage(pattern=r"(?i)^(?:\+|да)\s*$"))
     async def dice_challenge_accept(event) -> None:
-        if not event.is_group or not event.is_reply:
+        if not event.is_group or not is_explicit_message_reply(event.message):
             return
 
         sender = await event.get_sender()
         chat = await event.get_chat()
         if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
             return
-        if not await store.is_chat_enabled(event.chat_id):
+        if not await store.is_topic_enabled(
+            event.chat_id, message_topic_id(event.message)
+        ):
             return
 
         proposal = await event.get_reply_message()

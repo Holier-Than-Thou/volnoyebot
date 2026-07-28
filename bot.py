@@ -257,21 +257,48 @@ class BalanceStore:
             )
             """
         )
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS casino_topics (
+                chat_id INTEGER NOT NULL,
+                topic_id INTEGER NOT NULL,
+                enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+                PRIMARY KEY (chat_id, topic_id)
+            )
+            """
+        )
+        # Перенести прежнюю общую настройку в основной раздел один раз.
+        self.connection.execute(
+            """
+            INSERT OR IGNORE INTO casino_topics(chat_id, topic_id, enabled)
+            SELECT chat_id, 0, enabled
+            FROM chat_settings
+            """
+        )
         self.connection.commit()
 
-    async def is_chat_enabled(self, chat_id: int) -> bool:
-        """Проверить, разрешена ли работа казино в конкретном чате."""
+    async def is_topic_enabled(self, chat_id: int, topic_id: int) -> bool:
+        """Проверить работу казино в конкретном разделе активного чата."""
         async with self.lock:
-            row = self.connection.execute(
+            chat_row = self.connection.execute(
                 """
-                SELECT enabled, activated FROM chat_settings
+                SELECT activated FROM chat_settings
                 WHERE chat_id = ?
                 """,
                 (chat_id,),
             ).fetchone()
-            return bool(
-                row is not None and row["activated"] and row["enabled"]
-            )
+            if chat_row is None or not chat_row["activated"]:
+                return False
+            topic_row = self.connection.execute(
+                """
+                SELECT enabled FROM casino_topics
+                WHERE chat_id = ? AND topic_id = ?
+                """,
+                (chat_id, topic_id),
+            ).fetchone()
+            if topic_row is not None:
+                return bool(topic_row["enabled"])
+            return topic_id == 0
 
     async def is_chat_activated(self, chat_id: int) -> bool:
         """Проверить, активировал ли администратор бота в чате."""
@@ -295,17 +322,28 @@ class BalanceStore:
                 """,
                 (chat_id,),
             )
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO casino_topics(chat_id, topic_id, enabled)
+                VALUES (?, 0, 1)
+                """,
+                (chat_id,),
+            )
             self.connection.commit()
 
-    async def set_chat_enabled(self, chat_id: int, enabled: bool) -> None:
-        """Сохранить состояние работы казино для конкретного чата."""
+    async def set_topic_enabled(
+        self, chat_id: int, topic_id: int, enabled: bool
+    ) -> None:
+        """Сохранить состояние казино для конкретного раздела чата."""
         async with self.lock:
             self.connection.execute(
                 """
-                INSERT INTO chat_settings(chat_id, enabled) VALUES (?, ?)
-                ON CONFLICT(chat_id) DO UPDATE SET enabled = excluded.enabled
+                INSERT INTO casino_topics(chat_id, topic_id, enabled)
+                VALUES (?, ?, ?)
+                ON CONFLICT(chat_id, topic_id)
+                DO UPDATE SET enabled = excluded.enabled
                 """,
-                (chat_id, int(enabled)),
+                (chat_id, topic_id, int(enabled)),
             )
             self.connection.commit()
 
@@ -1717,27 +1755,32 @@ async def casino_command(event) -> None:
     command = parts[0].lower()
     args = parts[1:]
     chat_id = event.chat_id
+    topic_id = casino.message_topic_id(event.message)
     name = display_name(sender)
 
-    chat_enabled = await store.is_chat_enabled(chat_id)
+    topic_enabled = await store.is_topic_enabled(chat_id, topic_id)
 
     # Управление доступно администратору даже в остановленном чате.
     if command in {"стоп", "старт"}:
         if sender.id != admin_id:
-            if chat_enabled:
+            if topic_enabled:
                 await event.reply("Эта команда доступна только администратору.")
             return
         enabled = command == "старт"
-        await store.set_chat_enabled(chat_id, enabled)
+        await store.set_topic_enabled(chat_id, topic_id, enabled)
         if enabled:
-            await event.reply("▶️ Казино «Три топора» снова работает в этом чате.")
+            await event.reply(
+                "▶️ Казино и игра в кости запущены в этом разделе."
+            )
         else:
-            await event.reply("⏸ Казино «Три топора» приостановлено в этом чате.")
+            await event.reply(
+                "⏸ Казино и игра в кости остановлены в этом разделе."
+            )
         return
 
     if command == "автоудаление":
         if sender.id != admin_id:
-            if chat_enabled:
+            if topic_enabled:
                 await event.reply("Эта команда доступна только администратору.")
             return
         auto_delete_enabled = await store.toggle_auto_delete(chat_id)
@@ -1749,7 +1792,7 @@ async def casino_command(event) -> None:
 
     if command == "кд":
         if sender.id != admin_id:
-            if chat_enabled:
+            if topic_enabled:
                 await event.reply("Эта команда доступна только администратору.")
             return
         if len(args) != 1 or not args[0].isdigit():
@@ -1766,7 +1809,7 @@ async def casino_command(event) -> None:
         return
 
     # В остановленном чате бот молча игнорирует все остальные команды.
-    if not chat_enabled:
+    if not topic_enabled:
         return
 
     if command == "уведы":
