@@ -19,7 +19,8 @@ from telethon import TelegramClient, events
 from telethon.tl import types
 from telethon.tl.types import Channel, Chat, MessageMediaDice, User
 
-from games import casino, dice, guess_sound
+from games import casino, dice, farm, guess_sound
+from games.farm_storage import FarmStoreMixin, initialize_farm_schema
 from games.guess_sound.freesound import FreesoundProvider
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -76,7 +77,7 @@ ASSETS = {
 HELP_TEXT = casino.help_text(MIN_BET)
 
 
-class BalanceStore:
+class BalanceStore(FarmStoreMixin):
     """Небольшое SQLite-хранилище балансов по чату и пользователю."""
 
     def __init__(self, path: Path) -> None:
@@ -275,6 +276,7 @@ class BalanceStore:
             FROM chat_settings
             """
         )
+        initialize_farm_schema(self.connection)
         self.connection.commit()
 
     async def is_topic_enabled(self, chat_id: int, topic_id: int) -> bool:
@@ -2010,6 +2012,17 @@ async def casino_command(event) -> None:
         await event.reply(format_chat_casino_analytics(analytics))
         return
 
+    if await farm.handle_command(
+        event,
+        command,
+        args,
+        store,
+        sender.id,
+        name,
+        INITIAL_BALANCE,
+    ):
+        return
+
     # Короткая форма «каз 100» равнозначна «каз ставка 100».
     if command.isdigit():
         args = [command]
@@ -2111,6 +2124,8 @@ async def casino_command(event) -> None:
                 f"Баланс: {balance_after_bet}"
             )
             schedule_delete(chat, slot_message, result_message)
+        if farm.earns_pet_egg(result):
+            await farm.award_slot_egg(event, store, chat_id, sender.id)
         return
 
     # Всё ниже доступно только аккаунту из ADMIN_ID.
