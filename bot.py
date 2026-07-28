@@ -1931,16 +1931,13 @@ async def casino_command(event) -> None:
         return
 
     if command == "аналитика":
-        if sender.id != admin_id:
-            await event.reply("Эта команда доступна только администратору.")
-            return
         if args:
             await event.reply(
                 "Формат: `каз аналитика` или эта же команда ответом "
                 "на сообщение пользователя."
             )
             return
-        if event.is_reply:
+        if casino.is_explicit_message_reply(event.message):
             replied = await event.get_reply_message()
             target_user = await replied.get_sender()
             if not isinstance(target_user, User) or target_user.bot:

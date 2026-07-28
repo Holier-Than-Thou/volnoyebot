@@ -63,6 +63,36 @@ class CasinoRulesTest(unittest.TestCase):
         )
         self.assertEqual(casino.message_topic_id(message), 0)
 
+    def test_topic_threading_is_not_an_explicit_reply(self) -> None:
+        message = SimpleNamespace(
+            reply_to=SimpleNamespace(
+                forum_topic=True,
+                reply_to_top_id=None,
+                reply_to_msg_id=77,
+            )
+        )
+        self.assertFalse(casino.is_explicit_message_reply(message))
+
+    def test_reply_to_user_inside_topic_is_explicit(self) -> None:
+        message = SimpleNamespace(
+            reply_to=SimpleNamespace(
+                forum_topic=True,
+                reply_to_top_id=77,
+                reply_to_msg_id=91,
+            )
+        )
+        self.assertTrue(casino.is_explicit_message_reply(message))
+
+    def test_reply_in_regular_chat_is_explicit(self) -> None:
+        message = SimpleNamespace(
+            reply_to=SimpleNamespace(
+                forum_topic=False,
+                reply_to_top_id=None,
+                reply_to_msg_id=91,
+            )
+        )
+        self.assertTrue(casino.is_explicit_message_reply(message))
+
 
 if __name__ == "__main__":
     unittest.main()

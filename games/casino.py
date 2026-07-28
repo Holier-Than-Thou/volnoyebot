@@ -30,6 +30,23 @@ def message_topic_id(message) -> int:
     return 0 if topic_id in (None, 1) else int(topic_id)
 
 
+def is_explicit_message_reply(message) -> bool:
+    """Отличить ответ пользователю от технической привязки к forum topic."""
+    reply_header = getattr(message, "reply_to", None)
+    reply_message_id = getattr(reply_header, "reply_to_msg_id", None)
+    if reply_header is None or reply_message_id is None:
+        return False
+    if not getattr(reply_header, "forum_topic", False):
+        return True
+    top_message_id = getattr(reply_header, "reply_to_top_id", None)
+    # У обычного сообщения в топике reply_to_msg_id указывает на корень темы,
+    # а у настоящего ответа reply_to_top_id содержит этот корень отдельно.
+    return (
+        top_message_id is not None
+        and reply_message_id != top_message_id
+    )
+
+
 def help_text(min_bet: int) -> str:
     return f"""🎰 Казино «Три топора»
 
@@ -42,6 +59,7 @@ def help_text(min_bet: int) -> str:
 каз призы
 каз топ
 каз лог / каз лог все
+каз аналитика
 каз уведы
 каз помощь
 
@@ -59,7 +77,7 @@ def help_text(min_bet: int) -> str:
 Администратор может включить или выключить это уведомление в текущем топике
 командой «каз уведы».
 
-Администратор: каз аналитика — сводная статистика казино.
+Каз аналитика — сводная статистика казино.
 Ответом на сообщение — отдельная аналитика игрока по казино и костям.
 Администратор: каз зп — немедленно начислить всем по 1 000 очков.
 
