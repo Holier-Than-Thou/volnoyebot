@@ -728,6 +728,8 @@ footer span {
 
 .fisher.casting {
   background-image: url("/assets/fishing/fisher-cast.png");
+  transform: translateX(-45%) scale(1.09);
+  transform-origin: 47% 87%;
   animation: fisher-cast .95s linear 1;
 }
 
