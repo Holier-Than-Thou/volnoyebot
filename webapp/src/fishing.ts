@@ -38,14 +38,7 @@ app.innerHTML = `
         <span></span><span></span><span></span><span></span><span></span>
       </div>
       <div class="fisher" id="fisher" aria-label="Рыбак сидит на пирсе">
-        <div class="hat"></div>
-        <div class="head"></div>
-        <div class="body"></div>
-        <div class="arm"></div>
-        <div class="leg leg-one"></div>
-        <div class="leg leg-two"></div>
-        <div class="rod"></div>
-        <div class="fishing-line"></div>
+        <span class="visually-hidden">Рыбак сидит с удочкой</span>
       </div>
 
       <div class="status-card" id="status-card">

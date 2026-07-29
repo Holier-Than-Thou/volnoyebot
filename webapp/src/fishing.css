@@ -618,3 +618,98 @@ footer span {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Сгенерированные пиксель-арт ассеты заменяют черновые CSS-фигуры.
+   Старые слои остаются разметкой для поплавка и водяных кругов. */
+.lake-scene {
+  background:
+    linear-gradient(rgba(18, 57, 62, .03), rgba(18, 57, 62, .03)),
+    url("/assets/fishing/lake-background.png") center / cover no-repeat;
+  image-rendering: pixelated;
+}
+
+.sky,
+.pier,
+.water::after,
+.water-line {
+  display: none;
+}
+
+.water {
+  inset: 0;
+  overflow: visible;
+  background: none;
+}
+
+.fisher {
+  bottom: 4%;
+  left: 8%;
+  width: clamp(260px, 31vw, 390px);
+  height: clamp(347px, 41.33vw, 520px);
+  background-image: url("/assets/fishing/fisher-sprites.png");
+  background-position: 0 0;
+  background-size: 400% 200%;
+  image-rendering: pixelated;
+  animation: fisher-idle 1.35s steps(4) infinite;
+}
+
+.fisher.casting {
+  background-position-y: 100%;
+  animation: fisher-cast .95s steps(4) 1;
+}
+
+@keyframes fisher-idle {
+  0%, 24.99% { background-position-x: 0; }
+  25%, 49.99% { background-position-x: 33.333%; }
+  50%, 74.99% { background-position-x: 66.667%; }
+  75%, 100% { background-position-x: 100%; }
+}
+
+@keyframes fisher-cast {
+  0%, 24.99% { background-position: 0 100%; }
+  25%, 49.99% { background-position: 33.333% 100%; }
+  50%, 74.99% { background-position: 66.667% 100%; }
+  75%, 100% { background-position: 100% 100%; }
+}
+
+.bobber {
+  top: 57%;
+  left: 58%;
+}
+
+.bite-rings {
+  top: 62%;
+  left: 58%;
+}
+
+[data-state="waiting"] .fisher,
+[data-state="playing"] .fisher {
+  animation-name: fisher-idle;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .fisher {
+    bottom: 3%;
+    left: -5%;
+    width: 300px;
+    height: 400px;
+    transform: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .fisher {
+    left: -17%;
+    width: 270px;
+    height: 360px;
+  }
+}
