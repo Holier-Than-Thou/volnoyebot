@@ -1404,6 +1404,38 @@ class BalanceStore(FarmStoreMixin):
                 (chat_id,),
             ).fetchall()
 
+    async def top_casino_rtp(
+        self, chat_id: int, descending: bool = False
+    ) -> list[sqlite3.Row]:
+        """Вернуть игроков чата, отсортированных по фактическому RTP."""
+        direction = "DESC" if descending else "ASC"
+        async with self.lock:
+            return self.connection.execute(
+                f"""
+                SELECT
+                    history.player_id,
+                    COALESCE(
+                        balances.display_name,
+                        MAX(history.player_name)
+                    ) AS display_name,
+                    COUNT(*) AS games,
+                    SUM(history.stake) AS stakes,
+                    SUM(history.player_payout) AS payouts,
+                    100.0 * SUM(history.player_payout)
+                        / SUM(history.stake) AS rtp
+                FROM game_history AS history
+                LEFT JOIN balances
+                    ON balances.chat_id = history.chat_id
+                    AND balances.user_id = history.player_id
+                WHERE history.chat_id = ?
+                    AND history.game_type = 'casino'
+                GROUP BY history.player_id, balances.display_name
+                ORDER BY rtp {direction}, games DESC, display_name ASC
+                LIMIT 10
+                """,
+                (chat_id,),
+            ).fetchall()
+
 
 def display_name(user: User) -> str:
     """Получить удобное имя без обязательного username."""
@@ -1963,6 +1995,35 @@ async def casino_command(event) -> None:
         return
 
     if command == "топ":
+        if args and args[0].casefold() == "rtp":
+            if len(args) > 2 or (
+                len(args) == 2 and args[1].casefold() != "убыв"
+            ):
+                await event.reply(
+                    "Формат: `каз топ RTP` или `каз топ RTP убыв`."
+                )
+                return
+            descending = len(args) == 2
+            rows = await store.top_casino_rtp(chat_id, descending)
+            if not rows:
+                await event.reply("Статистика казино в этом чате пока пуста.")
+                return
+            direction = "убыванию" if descending else "возрастанию"
+            lines = [f"🏆 RTP игроков по {direction}:"]
+            lines.extend(
+                f"{index}. {row['display_name']} — {row['rtp']:.2f}% "
+                f"({row['games']} игр, ставки: "
+                f"{format_points(int(row['stakes']))})"
+                for index, row in enumerate(rows, start=1)
+            )
+            await event.reply("\n".join(lines), parse_mode=None)
+            return
+        if args:
+            await event.reply(
+                "Формат: `каз топ`, `каз топ RTP` "
+                "или `каз топ RTP убыв`."
+            )
+            return
         rows = await store.top(chat_id)
         if not rows:
             await event.reply("Таблица пока пуста. Используйте `каз раздать`.")

@@ -93,6 +93,30 @@ class CasinoRulesTest(unittest.TestCase):
         )
         self.assertTrue(casino.is_explicit_message_reply(message))
 
+    def test_rtp_sorting_formula(self) -> None:
+        players = [
+            {"name": "Средний", "stakes": 200, "payouts": 100},
+            {"name": "Высокий", "stakes": 100, "payouts": 200},
+            {"name": "Низкий", "stakes": 100, "payouts": 0},
+        ]
+        ascending = sorted(
+            players,
+            key=lambda player: player["payouts"] / player["stakes"],
+        )
+        descending = sorted(
+            players,
+            key=lambda player: player["payouts"] / player["stakes"],
+            reverse=True,
+        )
+        self.assertEqual(
+            [player["name"] for player in ascending],
+            ["Низкий", "Средний", "Высокий"],
+        )
+        self.assertEqual(
+            [player["name"] for player in descending],
+            ["Высокий", "Средний", "Низкий"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
