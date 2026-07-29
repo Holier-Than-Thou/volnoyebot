@@ -87,10 +87,13 @@ def _format_pet(pet: pets.Pet, now: float) -> str:
             )
         return f"{slot}️⃣ 🥚 Неизвестное яйцо вылупляется автоматически"
     generation = "гибрид" if pet.generation else "чистопородный"
+    income_per_second = pet.income_per_second()
+    income_per_hour = income_per_second * 3600
     return (
         f"{slot}️⃣ {pet.name} ({generation})\n"
         f"   💨 {pet.stench} · 🤢 {pet.ugliness} · 🍯 {pet.stickiness}\n"
-        f"   Доход: {pet.income_per_second():.3f} очка/сек."
+        f"   ⛏ Добыча: {income_per_second:.3f} очка/сек. "
+        f"(≈{income_per_hour:,.0f} в час)".replace(",", " ")
     )
 
 
