@@ -40,6 +40,9 @@ app.innerHTML = `
       <div class="fisher" id="fisher" aria-label="Рыбак сидит на пирсе">
         <span class="visually-hidden">Рыбак сидит с удочкой</span>
       </div>
+      <svg class="fishing-line-overlay" id="fishing-line-overlay" aria-hidden="true">
+        <path id="fishing-line-path"></path>
+      </svg>
 
       <div class="status-card" id="status-card">
         <span class="status-icon" id="status-icon">≈</span>
@@ -90,15 +93,17 @@ app.innerHTML = `
   </main>
 `;
 
-const get = <T extends HTMLElement>(id: string): T => {
+const get = <T extends Element>(id: string): T => {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Не найден элемент #${id}`);
-  return element as T;
+  return element as unknown as T;
 };
 
 const scene = get<HTMLElement>("lake-scene");
 const fisher = get<HTMLElement>("fisher");
 const lakeBobber = get<HTMLElement>("lake-bobber");
+const fishingLineOverlay = get<SVGElement>("fishing-line-overlay");
+const fishingLinePath = get<SVGPathElement>("fishing-line-path");
 const biteRings = get<HTMLElement>("bite-rings");
 const minigame = get<HTMLElement>("minigame");
 const safeZoneElement = get<HTMLElement>("safe-zone");
@@ -138,6 +143,7 @@ function setState(nextState: GameState): void {
   lakeBobber.classList.toggle("visible", ["waiting", "playing"].includes(nextState));
   biteRings.classList.toggle("visible", nextState === "playing");
   minigame.classList.toggle("visible", nextState === "playing");
+  window.requestAnimationFrame(updateFishingLine);
 
   if (nextState === "idle") {
     setStatus("≈", "Вода спокойна", "Закиньте удочку и дождитесь поклёвки.");
@@ -169,6 +175,26 @@ function setState(nextState: GameState): void {
     castButton.disabled = false;
     castButton.innerHTML = "<span>Попробовать снова</span><small>в этот раз повезёт</small>";
   }
+}
+
+function updateFishingLine(): void {
+  const sceneRect = scene.getBoundingClientRect();
+  const fisherRect = fisher.getBoundingClientRect();
+  const bobberRect = lakeBobber.getBoundingClientRect();
+  const startX = fisherRect.left - sceneRect.left + fisherRect.width * 0.91;
+  const startY = fisherRect.top - sceneRect.top + fisherRect.height * 0.2;
+  const endX = bobberRect.left - sceneRect.left + bobberRect.width / 2;
+  const endY = bobberRect.top - sceneRect.top + bobberRect.height / 2;
+  const bendY = startY + Math.max(10, (endY - startY) * 0.1);
+
+  fishingLineOverlay.setAttribute(
+    "viewBox",
+    `0 0 ${sceneRect.width} ${sceneRect.height}`,
+  );
+  fishingLinePath.setAttribute(
+    "d",
+    `M ${startX} ${startY} L ${endX} ${bendY} L ${endX} ${endY}`,
+  );
 }
 
 function cast(): void {
@@ -278,5 +304,6 @@ window.addEventListener("keyup", (event) => {
   setHolding(false);
 });
 window.addEventListener("blur", () => setHolding(false));
+window.addEventListener("resize", updateFishingLine);
 
 setState("idle");

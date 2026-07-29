@@ -642,20 +642,22 @@ footer span {
 }
 
 .fisher {
-  bottom: 4%;
+  bottom: 1%;
   left: 8%;
-  width: clamp(260px, 31vw, 390px);
-  height: clamp(347px, 41.33vw, 520px);
-  background-image: url("/assets/fishing/fisher-sprites.png");
+  width: clamp(230px, 26vw, 320px);
+  height: auto;
+  aspect-ratio: 2 / 3;
+  background-image: url("/assets/fishing/fisher-idle.png");
   background-position: 0 0;
-  background-size: 400% 200%;
+  background-size: 400% 100%;
+  background-repeat: no-repeat;
   image-rendering: pixelated;
-  animation: fisher-idle 1.35s steps(4) infinite;
+  animation: fisher-idle 1.5s linear infinite;
 }
 
 .fisher.casting {
-  background-position-y: 100%;
-  animation: fisher-cast .95s steps(4) 1;
+  background-image: url("/assets/fishing/fisher-cast.png");
+  animation: fisher-cast .95s linear 1;
 }
 
 @keyframes fisher-idle {
@@ -666,20 +668,63 @@ footer span {
 }
 
 @keyframes fisher-cast {
-  0%, 24.99% { background-position: 0 100%; }
-  25%, 49.99% { background-position: 33.333% 100%; }
-  50%, 74.99% { background-position: 66.667% 100%; }
-  75%, 100% { background-position: 100% 100%; }
+  0%, 24.99% { background-position-x: 0; }
+  25%, 49.99% { background-position-x: 33.333%; }
+  50%, 74.99% { background-position-x: 66.667%; }
+  75%, 100% { background-position-x: 100%; }
 }
 
 .bobber {
   top: 57%;
   left: 58%;
+  width: 12px;
+  height: 25px;
+  border: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(
+      to bottom,
+      transparent 0 3px,
+      #f5e1a4 3px 7px,
+      #502f28 7px 9px,
+      #e65336 9px 17px,
+      #f5e1a4 17px 23px,
+      #502f28 23px 25px
+    );
+  box-shadow: none;
+  image-rendering: pixelated;
 }
 
 .bite-rings {
   top: 62%;
   left: 58%;
+}
+
+.fishing-line-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fishing-line-overlay path {
+  fill: none;
+  stroke: #f8edc8;
+  stroke-width: 2;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+  shape-rendering: crispEdges;
+  filter: drop-shadow(1px 1px 0 rgba(36, 77, 70, .65));
+}
+
+[data-state="waiting"] .fishing-line-overlay,
+[data-state="playing"] .fishing-line-overlay {
+  opacity: .92;
 }
 
 [data-state="waiting"] .fisher,
@@ -698,18 +743,18 @@ footer span {
 
 @media (max-width: 760px) {
   .fisher {
-    bottom: 3%;
-    left: -5%;
-    width: 300px;
-    height: 400px;
+    bottom: 1%;
+    left: -4%;
+    width: 270px;
+    height: auto;
     transform: none;
   }
 }
 
 @media (max-width: 430px) {
   .fisher {
-    left: -17%;
-    width: 270px;
-    height: 360px;
+    left: -14%;
+    width: 250px;
+    height: auto;
   }
 }
