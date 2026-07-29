@@ -37,7 +37,10 @@ app.innerHTML = `
       <div class="pier">
         <span></span><span></span><span></span><span></span><span></span>
       </div>
-      <div class="fisher" id="fisher" aria-label="Рыбак сидит на пирсе">
+      <div class="fisher-seat" aria-hidden="true">
+        <i></i><i></i>
+      </div>
+      <div class="fisher" id="fisher" aria-label="Рыбак сидит на табурете на пирсе">
         <span class="visually-hidden">Рыбак сидит с удочкой</span>
       </div>
       <svg class="fishing-line-overlay" id="fishing-line-overlay" aria-hidden="true">
