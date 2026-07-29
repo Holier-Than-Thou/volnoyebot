@@ -1405,7 +1405,7 @@ class BalanceStore(FarmStoreMixin):
             ).fetchall()
 
     async def top_casino_rtp(
-        self, chat_id: int, descending: bool = False
+        self, chat_id: int, descending: bool = True
     ) -> list[sqlite3.Row]:
         """Вернуть игроков чата, отсортированных по фактическому RTP."""
         direction = "DESC" if descending else "ASC"
@@ -1997,13 +1997,13 @@ async def casino_command(event) -> None:
     if command == "топ":
         if args and args[0].casefold() == "rtp":
             if len(args) > 2 or (
-                len(args) == 2 and args[1].casefold() != "убыв"
+                len(args) == 2 and args[1].casefold() != "возр"
             ):
                 await event.reply(
-                    "Формат: `каз топ RTP` или `каз топ RTP убыв`."
+                    "Формат: `каз топ RTP` или `каз топ RTP возр`."
                 )
                 return
-            descending = len(args) == 2
+            descending = len(args) == 1
             rows = await store.top_casino_rtp(chat_id, descending)
             if not rows:
                 await event.reply("Статистика казино в этом чате пока пуста.")
@@ -2021,7 +2021,7 @@ async def casino_command(event) -> None:
         if args:
             await event.reply(
                 "Формат: `каз топ`, `каз топ RTP` "
-                "или `каз топ RTP убыв`."
+                "или `каз топ RTP возр`."
             )
             return
         rows = await store.top(chat_id)
