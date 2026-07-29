@@ -652,6 +652,7 @@ footer span {
   background-size: 400% 100%;
   background-repeat: no-repeat;
   image-rendering: pixelated;
+  transform: translateX(-55%);
   animation: fisher-idle 1.5s linear infinite;
 }
 
@@ -664,6 +665,7 @@ footer span {
   height: auto;
   aspect-ratio: 100 / 121;
   pointer-events: none;
+  transform: translateX(-55%);
 }
 
 .fisher-seat::before {
@@ -816,13 +818,14 @@ footer span {
     left: 5%;
     width: 250px;
     height: auto;
-    transform: none;
+    transform: translateX(-55%);
   }
 
   .fisher-seat {
     bottom: 8%;
     left: 5%;
     width: 250px;
+    transform: translateX(-55%);
   }
 }
 
@@ -836,5 +839,6 @@ footer span {
   .fisher-seat {
     left: 1%;
     width: 235px;
+    transform: translateX(-55%);
   }
 }
