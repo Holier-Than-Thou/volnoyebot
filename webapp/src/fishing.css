@@ -642,9 +642,9 @@ footer span {
 }
 
 .fisher {
-  bottom: 1%;
-  left: 8%;
-  width: clamp(255px, 29vw, 354px);
+  bottom: 10%;
+  left: 17%;
+  width: clamp(225px, 25vw, 305px);
   height: auto;
   aspect-ratio: 100 / 121;
   background-image: url("/assets/fishing/fisher-idle.png");
@@ -658,9 +658,9 @@ footer span {
 .fisher-seat {
   position: absolute;
   z-index: 7;
-  bottom: 1%;
-  left: 8%;
-  width: clamp(255px, 29vw, 354px);
+  bottom: 10%;
+  left: 17%;
+  width: clamp(225px, 25vw, 305px);
   height: auto;
   aspect-ratio: 100 / 121;
   pointer-events: none;
@@ -812,29 +812,29 @@ footer span {
 
 @media (max-width: 760px) {
   .fisher {
-    bottom: 1%;
-    left: -4%;
-    width: 300px;
+    bottom: 8%;
+    left: 5%;
+    width: 250px;
     height: auto;
     transform: none;
   }
 
   .fisher-seat {
-    bottom: 1%;
-    left: -4%;
-    width: 300px;
+    bottom: 8%;
+    left: 5%;
+    width: 250px;
   }
 }
 
 @media (max-width: 430px) {
   .fisher {
-    left: -14%;
-    width: 280px;
+    left: 1%;
+    width: 235px;
     height: auto;
   }
 
   .fisher-seat {
-    left: -14%;
-    width: 280px;
+    left: 1%;
+    width: 235px;
   }
 }
