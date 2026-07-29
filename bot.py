@@ -22,6 +22,12 @@ from telethon.tl.types import Channel, Chat, MessageMediaDice, User
 from games import casino, dice, farm, guess_sound
 from games.farm_storage import FarmStoreMixin, initialize_farm_schema
 from games.guess_sound.freesound import FreesoundProvider
+from games.release import (
+    RELEASE_ID,
+    RELEASE_SUMMARY,
+    ReleaseStoreMixin,
+    initialize_release_schema,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
@@ -78,7 +84,7 @@ ASSETS = {
 HELP_TEXT = casino.help_text(MIN_BET)
 
 
-class BalanceStore(FarmStoreMixin):
+class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
     """Небольшое SQLite-хранилище балансов по чату и пользователю."""
 
     def __init__(self, path: Path) -> None:
@@ -278,6 +284,7 @@ class BalanceStore(FarmStoreMixin):
             """
         )
         initialize_farm_schema(self.connection)
+        initialize_release_schema(self.connection)
         self.connection.commit()
 
     async def is_topic_enabled(self, chat_id: int, topic_id: int) -> bool:
@@ -1686,6 +1693,42 @@ async def pet_hatching_loop() -> None:
         await asyncio.sleep(PET_HATCH_CHECK_INTERVAL_SECONDS)
 
 
+async def announce_release() -> None:
+    """Опубликовать и попытаться закрепить текущую сводку изменений."""
+    targets = await store.pending_release_targets(RELEASE_ID)
+    for chat_id, topic_id in targets:
+        try:
+            message = await client.send_message(
+                chat_id,
+                RELEASE_SUMMARY,
+                reply_to=topic_id or None,
+                parse_mode=None,
+            )
+        except Exception as error:
+            print(
+                "Не удалось отправить сводку обновления "
+                f"в чат {chat_id}, топик {topic_id}: {error}"
+            )
+            continue
+
+        pinned = False
+        try:
+            await client.pin_message(chat_id, message, notify=False)
+            pinned = True
+        except Exception as error:
+            print(
+                "Не удалось закрепить сводку обновления "
+                f"в чате {chat_id}, топике {topic_id}: {error}"
+            )
+        await store.mark_release_announced(
+            chat_id,
+            topic_id,
+            RELEASE_ID,
+            message.id,
+            pinned,
+        )
+
+
 async def send_work_payout_notifications(payouts: list[dict]) -> int:
     """Отправить уведомления в разрешённые топики и вернуть их число."""
     sent_count = 0
@@ -2304,6 +2347,7 @@ async def main() -> None:
     if not me.username:
         raise RuntimeError("У Telegram-бота отсутствует username")
     bot_username = me.username
+    await announce_release()
     await restore_dice_expirations()
     payout_task = asyncio.create_task(work_payout_loop())
     cleanup_tasks.add(payout_task)
