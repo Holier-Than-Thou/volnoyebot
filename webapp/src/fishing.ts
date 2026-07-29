@@ -187,9 +187,14 @@ function updateFishingLine(): void {
   const startX = fisherRect.left - sceneRect.left + fisherRect.width * 0.94;
   const startY = fisherRect.top - sceneRect.top + fisherRect.height * 0.28;
   const endX = bobberRect.left - sceneRect.left + bobberRect.width / 2;
-  const endY = bobberRect.top - sceneRect.top + bobberRect.height / 2;
-  const controlX = startX + (endX - startX) * 0.65;
-  const controlY = startY + (endY - startY) * 0.12;
+  const endY = bobberRect.top - sceneRect.top + 4;
+  const controlX = (startX + endX) / 2;
+  const midpointY = (startY + endY) / 2;
+  const sagDepth = Math.min(
+    55,
+    Math.max(30, Math.abs(endX - startX) * 0.1),
+  );
+  const controlY = midpointY + sagDepth * 2;
 
   fishingLineOverlay.setAttribute(
     "viewBox",

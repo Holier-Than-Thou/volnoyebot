@@ -333,12 +333,12 @@ h1 {
 .bobber.visible {
   opacity: 1;
   transform: translateY(0);
-  animation: bobbing 1.6s ease-in-out infinite;
+  animation: bobbing 1.6s steps(2, end) infinite;
 }
 
-@keyframes bobbing { 50% { transform: translateY(9px) rotate(4deg); } }
-[data-state="playing"] .bobber { animation: bite .33s ease-in-out infinite alternate; }
-@keyframes bite { to { transform: translateY(17px) rotate(-7deg); } }
+@keyframes bobbing { 50% { transform: translateY(6px); } }
+[data-state="playing"] .bobber { animation: bite .33s steps(2, end) infinite alternate; }
+@keyframes bite { to { transform: translateY(12px); } }
 
 .bite-rings {
   position: absolute;
@@ -750,21 +750,24 @@ footer span {
 .bobber {
   top: 57%;
   left: 58%;
-  width: 12px;
-  height: 25px;
+  width: 10px;
+  height: 24px;
   border: 0;
   border-radius: 0;
   background:
     linear-gradient(
       to bottom,
-      transparent 0 3px,
-      #f5e1a4 3px 7px,
-      #502f28 7px 9px,
-      #e65336 9px 17px,
-      #f5e1a4 17px 23px,
-      #502f28 23px 25px
+      transparent 0 2px,
+      #4b2b22 2px 4px,
+      #f4df9b 4px 8px,
+      #4b2b22 8px 10px,
+      #e55032 10px 16px,
+      #f4df9b 16px 22px,
+      #4b2b22 22px 24px
     );
-  box-shadow: none;
+  box-shadow:
+    -2px 8px 0 #4b2b22,
+    2px 8px 0 #4b2b22;
   image-rendering: pixelated;
 }
 
