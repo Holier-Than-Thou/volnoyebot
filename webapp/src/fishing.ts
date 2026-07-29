@@ -181,11 +181,12 @@ function updateFishingLine(): void {
   const sceneRect = scene.getBoundingClientRect();
   const fisherRect = fisher.getBoundingClientRect();
   const bobberRect = lakeBobber.getBoundingClientRect();
-  const startX = fisherRect.left - sceneRect.left + fisherRect.width * 0.91;
-  const startY = fisherRect.top - sceneRect.top + fisherRect.height * 0.2;
+  const startX = fisherRect.left - sceneRect.left + fisherRect.width * 0.94;
+  const startY = fisherRect.top - sceneRect.top + fisherRect.height * 0.28;
   const endX = bobberRect.left - sceneRect.left + bobberRect.width / 2;
   const endY = bobberRect.top - sceneRect.top + bobberRect.height / 2;
-  const bendY = startY + Math.max(10, (endY - startY) * 0.1);
+  const controlX = startX + (endX - startX) * 0.65;
+  const controlY = startY + (endY - startY) * 0.12;
 
   fishingLineOverlay.setAttribute(
     "viewBox",
@@ -193,7 +194,7 @@ function updateFishingLine(): void {
   );
   fishingLinePath.setAttribute(
     "d",
-    `M ${startX} ${startY} L ${endX} ${bendY} L ${endX} ${endY}`,
+    `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`,
   );
 }
 

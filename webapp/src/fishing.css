@@ -644,9 +644,9 @@ footer span {
 .fisher {
   bottom: 1%;
   left: 8%;
-  width: clamp(230px, 26vw, 320px);
+  width: clamp(255px, 29vw, 354px);
   height: auto;
-  aspect-ratio: 2 / 3;
+  aspect-ratio: 100 / 121;
   background-image: url("/assets/fishing/fisher-idle.png");
   background-position: 0 0;
   background-size: 400% 100%;
@@ -745,7 +745,7 @@ footer span {
   .fisher {
     bottom: 1%;
     left: -4%;
-    width: 270px;
+    width: 300px;
     height: auto;
     transform: none;
   }
@@ -754,7 +754,7 @@ footer span {
 @media (max-width: 430px) {
   .fisher {
     left: -14%;
-    width: 250px;
+    width: 280px;
     height: auto;
   }
 }

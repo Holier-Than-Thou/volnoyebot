@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build --configLoader runner",
+    "inspect:fishing": "node inspect-fishing.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {
+    "playwright-core": "^1.62.0",
     "typescript": "^5.8.3",
     "vite": "^7.0.0"
   }
