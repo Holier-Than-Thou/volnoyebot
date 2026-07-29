@@ -8,6 +8,95 @@ import time
 from . import pets
 
 
+def _create_pets_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pets (
+            chat_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            slot_index INTEGER NOT NULL CHECK (slot_index BETWEEN 0 AND 5),
+            name TEXT NOT NULL DEFAULT '',
+            stench INTEGER NOT NULL CHECK (stench BETWEEN 0 AND 100),
+            ugliness INTEGER NOT NULL CHECK (ugliness BETWEEN 0 AND 100),
+            stickiness INTEGER NOT NULL CHECK (stickiness BETWEEN 0 AND 100),
+            generation INTEGER NOT NULL CHECK (generation IN (0, 1)),
+            is_egg INTEGER NOT NULL CHECK (is_egg IN (0, 1)),
+            egg_hatch_at REAL NOT NULL,
+            created_at REAL NOT NULL,
+            PRIMARY KEY (chat_id, user_id, slot_index)
+        )
+        """
+    )
+
+
+def _migrate_pets_schema(connection: sqlite3.Connection) -> None:
+    """Расширить ферму и свернуть чистые гены в специализацию игрока."""
+    row = connection.execute(
+        """
+        SELECT sql FROM sqlite_master
+        WHERE type = 'table' AND name = 'pets'
+        """
+    ).fetchone()
+    if row is None:
+        _create_pets_table(connection)
+        return
+    schema = str(row["sql"])
+    if "BETWEEN 0 AND 5" in schema and "BETWEEN 0 AND 100" in schema:
+        return
+
+    legacy_rows = connection.execute("SELECT * FROM pets").fetchall()
+    specs = {
+        (int(spec["chat_id"]), int(spec["user_id"])): str(spec["spec"])
+        for spec in connection.execute(
+            "SELECT chat_id, user_id, spec FROM player_specs"
+        ).fetchall()
+    }
+    connection.execute("ALTER TABLE pets RENAME TO pets_before_zero_genes")
+    _create_pets_table(connection)
+    for legacy in legacy_rows:
+        values = {
+            "stench": int(legacy["stench"]),
+            "ugliness": int(legacy["ugliness"]),
+            "stickiness": int(legacy["stickiness"]),
+        }
+        if int(legacy["generation"]) == 0:
+            total = sum(values.values())
+            if total > 100:
+                raise RuntimeError(
+                    "Сумма генов чистопородного питомца превышает 100"
+                )
+            spec = specs.get(
+                (int(legacy["chat_id"]), int(legacy["user_id"]))
+            )
+            if spec not in pets.SPECS:
+                spec = max(values, key=values.get)
+            values = {key: total if key == spec else 0 for key in pets.SPECS}
+        connection.execute(
+            """
+            INSERT INTO pets(
+                chat_id, user_id, slot_index, name,
+                stench, ugliness, stickiness, generation,
+                is_egg, egg_hatch_at, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                legacy["chat_id"],
+                legacy["user_id"],
+                legacy["slot_index"],
+                legacy["name"],
+                values["stench"],
+                values["ugliness"],
+                values["stickiness"],
+                legacy["generation"],
+                legacy["is_egg"],
+                legacy["egg_hatch_at"],
+                legacy["created_at"],
+            ),
+        )
+    connection.execute("DROP TABLE pets_before_zero_genes")
+
+
 def initialize_farm_schema(connection: sqlite3.Connection) -> None:
     """Создать таблицы фермы без изменения существующих данных."""
     connection.execute(
@@ -21,24 +110,7 @@ def initialize_farm_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS pets (
-            chat_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            slot_index INTEGER NOT NULL CHECK (slot_index BETWEEN 0 AND 3),
-            name TEXT NOT NULL DEFAULT 'Мутант',
-            stench INTEGER NOT NULL CHECK (stench BETWEEN 1 AND 100),
-            ugliness INTEGER NOT NULL CHECK (ugliness BETWEEN 1 AND 100),
-            stickiness INTEGER NOT NULL CHECK (stickiness BETWEEN 1 AND 100),
-            generation INTEGER NOT NULL CHECK (generation IN (0, 1)),
-            is_egg INTEGER NOT NULL CHECK (is_egg IN (0, 1)),
-            egg_hatch_at REAL NOT NULL,
-            created_at REAL NOT NULL,
-            PRIMARY KEY (chat_id, user_id, slot_index)
-        )
-        """
-    )
+    _migrate_pets_schema(connection)
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS pet_income (
@@ -48,6 +120,30 @@ def initialize_farm_schema(connection: sqlite3.Connection) -> None:
             updated_at REAL NOT NULL,
             PRIMARY KEY (chat_id, user_id)
         )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pet_transfers (
+            chat_id INTEGER NOT NULL,
+            proposal_message_id INTEGER NOT NULL,
+            sender_id INTEGER NOT NULL,
+            sender_name TEXT NOT NULL,
+            recipient_id INTEGER NOT NULL,
+            recipient_name TEXT NOT NULL,
+            slot_index INTEGER NOT NULL CHECK (slot_index BETWEEN 0 AND 5),
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'accepted', 'expired')),
+            created_at REAL NOT NULL,
+            PRIMARY KEY (chat_id, proposal_message_id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_pet_transfer
+        ON pet_transfers(chat_id, sender_id, slot_index)
+        WHERE status = 'pending'
         """
     )
 
@@ -75,6 +171,34 @@ class FarmStoreMixin:
         )
         return spec
 
+    def _hatch_matured_pets_unlocked(
+        self, chat_id: int, user_id: int, now: float
+    ) -> None:
+        """Открыть созревшие яйца и назначить случайные имена."""
+        rows = self.connection.execute(
+            """
+            SELECT slot_index FROM pets
+            WHERE chat_id = ? AND user_id = ?
+                AND is_egg = 1 AND egg_hatch_at <= ?
+            """,
+            (chat_id, user_id, now),
+        ).fetchall()
+        for row in rows:
+            self.connection.execute(
+                """
+                UPDATE pets
+                SET is_egg = 0, egg_hatch_at = 0, name = ?
+                WHERE chat_id = ? AND user_id = ? AND slot_index = ?
+                    AND is_egg = 1
+                """,
+                (
+                    pets.random_pet_name(),
+                    chat_id,
+                    user_id,
+                    int(row["slot_index"]),
+                ),
+            )
+
     def _accrue_income_unlocked(
         self, chat_id: int, user_id: int, now: float
     ) -> float:
@@ -93,14 +217,7 @@ class FarmStoreMixin:
                 """,
                 (chat_id, user_id, now),
             )
-            self.connection.execute(
-                """
-                UPDATE pets SET is_egg = 0, egg_hatch_at = 0
-                WHERE chat_id = ? AND user_id = ?
-                    AND is_egg = 1 AND egg_hatch_at <= ?
-                """,
-                (chat_id, user_id, now),
-            )
+            self._hatch_matured_pets_unlocked(chat_id, user_id, now)
             return 0.0
         updated_at = float(row["updated_at"])
         accumulated = float(row["accumulated"])
@@ -120,14 +237,7 @@ class FarmStoreMixin:
                 income_started_at = max(updated_at, pet.egg_hatch_at)
             elapsed = max(0.0, now - income_started_at)
             accumulated += pet.adult_income_per_second() * elapsed
-        self.connection.execute(
-            """
-            UPDATE pets SET is_egg = 0, egg_hatch_at = 0
-            WHERE chat_id = ? AND user_id = ?
-                AND is_egg = 1 AND egg_hatch_at <= ?
-            """,
-            (chat_id, user_id, now),
-        )
+        self._hatch_matured_pets_unlocked(chat_id, user_id, now)
         self.connection.execute(
             """
             UPDATE pet_income SET accumulated = ?, updated_at = ?
@@ -245,6 +355,21 @@ class FarmStoreMixin:
             ),
         )
 
+    def _pet_is_reserved_unlocked(
+        self, chat_id: int, user_id: int, slot_index: int
+    ) -> bool:
+        return (
+            self.connection.execute(
+                """
+                SELECT 1 FROM pet_transfers
+                WHERE chat_id = ? AND sender_id = ? AND slot_index = ?
+                    AND status = 'pending'
+                """,
+                (chat_id, user_id, slot_index),
+            ).fetchone()
+            is not None
+        )
+
     async def rename_pet(
         self,
         chat_id: int,
@@ -268,9 +393,11 @@ class FarmStoreMixin:
 
     async def shelter_pet(
         self, chat_id: int, user_id: int, slot_index: int
-    ) -> bool:
+    ) -> str:
         """Отдать питомца или яйцо из указанного слота в приют."""
         async with self.lock:
+            if self._pet_is_reserved_unlocked(chat_id, user_id, slot_index):
+                return "reserved"
             self._accrue_income_unlocked(chat_id, user_id, time.time())
             cursor = self.connection.execute(
                 """
@@ -280,13 +407,17 @@ class FarmStoreMixin:
                 (chat_id, user_id, slot_index),
             )
             self.connection.commit()
-            return cursor.rowcount == 1
+            return "ok" if cursor.rowcount == 1 else "missing"
 
     async def breed_pets(
         self, chat_id: int, user_id: int, first_slot: int, second_slot: int
     ) -> tuple[str, pets.Pet | None]:
         """Атомарно заменить двух родителей яйцом ребёнка."""
         async with self.lock:
+            if self._pet_is_reserved_unlocked(
+                chat_id, user_id, first_slot
+            ) or self._pet_is_reserved_unlocked(chat_id, user_id, second_slot):
+                return "Питомец зарезервирован для передачи", None
             now = time.time()
             self._accrue_income_unlocked(chat_id, user_id, now)
             rows = self.connection.execute(
@@ -322,6 +453,168 @@ class FarmStoreMixin:
             self._insert_pet_unlocked(chat_id, user_id, child)
             self.connection.commit()
             return "ok", child
+
+    async def create_pet_transfer(
+        self,
+        chat_id: int,
+        proposal_message_id: int,
+        sender_id: int,
+        sender_name: str,
+        recipient_id: int,
+        recipient_name: str,
+        slot_index: int,
+    ) -> str:
+        """Зарезервировать питомца для передачи конкретному игроку."""
+        async with self.lock:
+            pet = self.connection.execute(
+                """
+                SELECT 1 FROM pets
+                WHERE chat_id = ? AND user_id = ? AND slot_index = ?
+                """,
+                (chat_id, sender_id, slot_index),
+            ).fetchone()
+            if pet is None:
+                return "missing"
+            if self._pet_is_reserved_unlocked(chat_id, sender_id, slot_index):
+                return "reserved"
+            self.connection.execute(
+                """
+                INSERT INTO pet_transfers(
+                    chat_id, proposal_message_id,
+                    sender_id, sender_name,
+                    recipient_id, recipient_name,
+                    slot_index, status, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                """,
+                (
+                    chat_id,
+                    proposal_message_id,
+                    sender_id,
+                    sender_name,
+                    recipient_id,
+                    recipient_name,
+                    slot_index,
+                    time.time(),
+                ),
+            )
+            self.connection.commit()
+            return "ok"
+
+    async def accept_pet_transfer(
+        self,
+        chat_id: int,
+        proposal_message_id: int,
+        recipient_id: int,
+        expires_before: float,
+    ) -> tuple[str, dict | None]:
+        """Атомарно передать зарезервированного питомца в свободный слот."""
+        async with self.lock:
+            row = self.connection.execute(
+                """
+                SELECT * FROM pet_transfers
+                WHERE chat_id = ? AND proposal_message_id = ?
+                    AND status = 'pending'
+                """,
+                (chat_id, proposal_message_id),
+            ).fetchone()
+            if row is None:
+                return "not_found", None
+            transfer = dict(row)
+            if transfer["recipient_id"] != recipient_id:
+                return "wrong_user", None
+            if transfer["created_at"] <= expires_before:
+                self.connection.execute(
+                    """
+                    UPDATE pet_transfers SET status = 'expired'
+                    WHERE chat_id = ? AND proposal_message_id = ?
+                        AND status = 'pending'
+                    """,
+                    (chat_id, proposal_message_id),
+                )
+                self.connection.commit()
+                return "expired", transfer
+
+            now = time.time()
+            self._accrue_income_unlocked(
+                chat_id, int(transfer["sender_id"]), now
+            )
+            self._accrue_income_unlocked(chat_id, recipient_id, now)
+            pet_row = self.connection.execute(
+                """
+                SELECT * FROM pets
+                WHERE chat_id = ? AND user_id = ? AND slot_index = ?
+                """,
+                (
+                    chat_id,
+                    transfer["sender_id"],
+                    transfer["slot_index"],
+                ),
+            ).fetchone()
+            if pet_row is None:
+                self.connection.execute(
+                    """
+                    UPDATE pet_transfers SET status = 'expired'
+                    WHERE chat_id = ? AND proposal_message_id = ?
+                    """,
+                    (chat_id, proposal_message_id),
+                )
+                self.connection.commit()
+                return "missing", transfer
+            occupied = {
+                int(slot["slot_index"])
+                for slot in self.connection.execute(
+                    """
+                    SELECT slot_index FROM pets
+                    WHERE chat_id = ? AND user_id = ?
+                    """,
+                    (chat_id, recipient_id),
+                ).fetchall()
+            }
+            free_slots = [
+                slot for slot in range(pets.MAX_SLOTS) if slot not in occupied
+            ]
+            if not free_slots:
+                self.connection.commit()
+                return "full", transfer
+            recipient_slot = free_slots[0]
+            self.connection.execute(
+                """
+                UPDATE pets SET user_id = ?, slot_index = ?
+                WHERE chat_id = ? AND user_id = ? AND slot_index = ?
+                """,
+                (
+                    recipient_id,
+                    recipient_slot,
+                    chat_id,
+                    transfer["sender_id"],
+                    transfer["slot_index"],
+                ),
+            )
+            self.connection.execute(
+                """
+                UPDATE pet_transfers SET status = 'accepted'
+                WHERE chat_id = ? AND proposal_message_id = ?
+                """,
+                (chat_id, proposal_message_id),
+            )
+            self.connection.commit()
+            transfer["recipient_slot"] = recipient_slot
+            transfer["pet"] = pets.pet_from_mapping(pet_row)
+            return "ok", transfer
+
+    async def expire_pet_transfers(self, expires_before: float) -> int:
+        """Освободить питомцев из просроченных предложений."""
+        async with self.lock:
+            cursor = self.connection.execute(
+                """
+                UPDATE pet_transfers SET status = 'expired'
+                WHERE status = 'pending' AND created_at <= ?
+                """,
+                (expires_before,),
+            )
+            self.connection.commit()
+            return int(cursor.rowcount)
 
     async def claim_pet_income(
         self,

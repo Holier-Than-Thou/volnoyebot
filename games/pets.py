@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
 
 
@@ -19,9 +20,17 @@ SPEC_NAMES = {
     "ugliness": "Уродство",
     "stickiness": "Липкость",
 }
-MAX_SLOTS = 4
-EGG_HATCH_SECONDS = 60 * 60
+MAX_SLOTS = 6
+MIN_EGG_HATCH_MINUTES = 5
+MAX_EGG_HATCH_MINUTES = 60
 BASE_INCOME_PER_SECOND = 0.1
+INCOME_SYNERGY = {1: 1.0, 2: 1.35, 3: 1.8}
+PURE_MUTATION_MEAN = 1.5
+PURE_MUTATION_DEVIATION = 3
+HYBRID_MUTATION_MEAN = 0.5
+HYBRID_MUTATION_DEVIATION = 2
+MAX_BREEDING_GAIN = 8
+PET_NAMES_PATH = Path(__file__).resolve().parent.parent / "data" / "pet_names.txt"
 
 
 @dataclass(frozen=True)
@@ -44,12 +53,17 @@ class Pet:
 
     def adult_income_per_second(self) -> float:
         """Вернуть потенциальный доход питомца после вылупления."""
-        return (
-            BASE_INCOME_PER_SECOND
-            * (1 + self.stench / 100)
-            * (1 + self.ugliness / 100)
-            * (1 + self.stickiness / 100)
-        )
+        active_values = [
+            value
+            for value in (self.stench, self.ugliness, self.stickiness)
+            if value > 0
+        ]
+        if not active_values:
+            return 0.0
+        income = BASE_INCOME_PER_SECOND
+        for value in active_values:
+            income *= 1 + value / 100
+        return income * INCOME_SYNERGY[len(active_values)]
 
     def main_spec(self) -> str:
         """Вернуть характеристику с максимальным значением."""
@@ -86,31 +100,66 @@ def roll_egg_value() -> int:
     return max(1, min(20, round(random.gauss(10, 4))))
 
 
+def roll_hatch_seconds() -> int:
+    """Выбрать равноверное время созревания от 5 до 60 минут."""
+    return random.randint(
+        MIN_EGG_HATCH_MINUTES,
+        MAX_EGG_HATCH_MINUTES,
+    ) * 60
+
+
+def random_pet_name(path: Path = PET_NAMES_PATH) -> str:
+    """Выбрать имя из UTF-8-файла, игнорируя пустые строки и комментарии."""
+    try:
+        names = [
+            line.strip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+    except OSError:
+        names = []
+    return random.choice(names) if names else "Мутант"
+
+
 def create_pure_egg(spec: str, slot_index: int, now: float | None = None) -> Pet:
     """Создать яйцо со специализацией игрока."""
     if spec not in SPECS:
         raise ValueError("Неизвестная специализация")
     created_at = time.time() if now is None else now
-    stats = {key: 1 for key in SPECS}
+    stats = {key: 0 for key in SPECS}
     stats[spec] = roll_egg_value()
     return Pet(
         slot_index=slot_index,
-        name="Мутант",
+        name="",
         stench=stats["stench"],
         ugliness=stats["ugliness"],
         stickiness=stats["stickiness"],
         generation=0,
         is_egg=True,
-        egg_hatch_at=created_at + EGG_HATCH_SECONDS,
+        egg_hatch_at=created_at + roll_hatch_seconds(),
         created_at=created_at,
     )
 
 
 def breed_value(first: int, second: int) -> int:
-    """Унаследовать характеристику с мутацией и ограничением роста."""
-    average = (first + second) / 2
-    mutated = round(average + random.gauss(0, 5))
-    return max(1, min(100, min(mutated, max(first, second) + 33)))
+    """Унаследовать активный признак с небольшим положительным прогрессом."""
+    if first == 0 and second == 0:
+        return 0
+    if first == 0 or second == 0:
+        base = max(first, second)
+        mutation = random.gauss(
+            HYBRID_MUTATION_MEAN,
+            HYBRID_MUTATION_DEVIATION,
+        )
+    else:
+        base = (first + second) / 2
+        mutation = random.gauss(
+            PURE_MUTATION_MEAN,
+            PURE_MUTATION_DEVIATION,
+        )
+    mutated = round(base + mutation)
+    upper_bound = min(100, max(first, second) + MAX_BREEDING_GAIN)
+    return max(1, min(mutated, upper_bound))
 
 
 def breed(first: Pet, second: Pet, slot_index: int, now: float | None = None) -> Pet:
@@ -120,15 +169,20 @@ def breed(first: Pet, second: Pet, slot_index: int, now: float | None = None) ->
     if first.generation != 0 or second.generation != 0:
         raise ValueError("Гибриды стерильны и не могут участвовать в селекции")
     created_at = time.time() if now is None else now
-    generation = 0 if first.main_spec() == second.main_spec() else 1
+    child_stats = {
+        "stench": breed_value(first.stench, second.stench),
+        "ugliness": breed_value(first.ugliness, second.ugliness),
+        "stickiness": breed_value(first.stickiness, second.stickiness),
+    }
+    generation = int(sum(value > 0 for value in child_stats.values()) > 1)
     return Pet(
         slot_index=slot_index,
-        name="Мутант",
-        stench=breed_value(first.stench, second.stench),
-        ugliness=breed_value(first.ugliness, second.ugliness),
-        stickiness=breed_value(first.stickiness, second.stickiness),
+        name="",
+        stench=child_stats["stench"],
+        ugliness=child_stats["ugliness"],
+        stickiness=child_stats["stickiness"],
         generation=generation,
         is_egg=True,
-        egg_hatch_at=created_at + EGG_HATCH_SECONDS,
+        egg_hatch_at=created_at + roll_hatch_seconds(),
         created_at=created_at,
     )

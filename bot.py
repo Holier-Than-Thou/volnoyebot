@@ -1690,6 +1690,9 @@ async def pet_hatching_loop() -> None:
     """В фоновом режиме вылуплять созревшие яйца питомцев."""
     while True:
         await store.hatch_due_pet_eggs()
+        await store.expire_pet_transfers(
+            time.time() - farm.PET_TRANSFER_TTL_SECONDS
+        )
         await asyncio.sleep(PET_HATCH_CHECK_INTERVAL_SECONDS)
 
 
@@ -2325,7 +2328,7 @@ restore_dice_expirations = dice.register(
     client, store, display_name, schedule_delete
 )
 casino.register(client, casino_command)
-farm.register(client, direct_farm_command)
+farm.register(client, direct_farm_command, store)
 guess_sound.register(
     client,
     FreesoundProvider(FREESOUND_API_KEY),
