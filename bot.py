@@ -64,6 +64,7 @@ GAME_MESSAGE_TTL_SECONDS = 5
 HISTORY_LIMIT = 10
 WORK_PAYOUT_AMOUNT = 1_000
 WORK_PAYOUT_INTERVAL_SECONDS = 30 * 60
+PET_HATCH_CHECK_INTERVAL_SECONDS = 10
 WORK_PAYOUT_MESSAGE = (
     "Вы поработали в долбильне и заработали 1000 очков. Время депать!"
 )
@@ -1678,6 +1679,13 @@ async def work_payout_loop() -> None:
         await send_work_payout_notifications(payouts)
 
 
+async def pet_hatching_loop() -> None:
+    """В фоновом режиме вылуплять созревшие яйца питомцев."""
+    while True:
+        await store.hatch_due_pet_eggs()
+        await asyncio.sleep(PET_HATCH_CHECK_INTERVAL_SECONDS)
+
+
 async def send_work_payout_notifications(payouts: list[dict]) -> int:
     """Отправить уведомления в разрешённые топики и вернуть их число."""
     sent_count = 0
@@ -2275,6 +2283,9 @@ async def main() -> None:
     payout_task = asyncio.create_task(work_payout_loop())
     cleanup_tasks.add(payout_task)
     payout_task.add_done_callback(cleanup_tasks.discard)
+    hatching_task = asyncio.create_task(pet_hatching_loop())
+    cleanup_tasks.add(hatching_task)
+    hatching_task.add_done_callback(cleanup_tasks.discard)
     print(
         f"Бот @{bot_username} запущен. "
         f"Администратор: {admin_id}."

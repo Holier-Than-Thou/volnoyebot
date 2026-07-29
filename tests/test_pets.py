@@ -70,33 +70,37 @@ class FarmStoreTest(unittest.IsolatedAsyncioTestCase):
 
     @patch("games.pets.roll_spec", return_value="stench")
     @patch("games.pets.roll_egg_value", return_value=10)
-    async def test_award_hatch_and_claim_income(
+    async def test_egg_hatches_automatically_and_claims_income(
         self, _egg_value, _spec
     ) -> None:
         status, spec, egg = await self.store.award_pet_egg(1, 10)
         self.assertEqual((status, spec, egg.slot_index), ("ok", "stench", 0))
+        now = time.time()
         self.store.connection.execute(
             """
-            UPDATE pets SET egg_hatch_at = 0
+            UPDATE pets SET egg_hatch_at = ?
             WHERE chat_id = 1 AND user_id = 10 AND slot_index = 0
-            """
+            """,
+            (now - 10,),
         )
-        self.store.connection.commit()
-        self.assertEqual(await self.store.hatch_pet_egg(1, 10, 0), "ok")
         self.store.connection.execute(
             """
             UPDATE pet_income SET updated_at = ?
             WHERE chat_id = 1 AND user_id = 10
             """,
-            (time.time() - 20,),
+            (now - 20,),
         )
         self.store.connection.commit()
 
+        hatched = await self.store.hatch_due_pet_eggs()
+        self.assertEqual(hatched, 1)
+        snapshot = await self.store.get_farm(1, 10)
+        self.assertFalse(snapshot["pets"][0].is_egg)
         amount, balance = await asyncio.wait_for(
             self.store.claim_pet_income(1, 10, "Игрок", 1000),
             timeout=1,
         )
-        self.assertGreaterEqual(amount, 2)
+        self.assertEqual(amount, 1)
         self.assertEqual(balance, 1000 + amount)
         remainder = self.store.connection.execute(
             """

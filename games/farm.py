@@ -27,7 +27,7 @@ def _format_pet(pet: pets.Pet, now: float) -> str:
                 f"{slot}️⃣ 🥚 Яйцо — до вылупления "
                 f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             )
-        return f"{slot}️⃣ 🥚 Яйцо созрело — каз ферма вылупить {slot}"
+        return f"{slot}️⃣ 🥚 Яйцо вылупляется автоматически"
     generation = "гибрид" if pet.generation else "чистопородный"
     return (
         f"{slot}️⃣ {pet.name} ({generation})\n"
@@ -78,7 +78,6 @@ async def handle_command(
                 (
                     "",
                     "каз ферма собрать",
-                    "каз ферма вылупить N",
                     "каз ферма переименовать N Имя",
                     "каз скрестить N N",
                 )
@@ -103,20 +102,6 @@ async def handle_command(
                     "🌾 Пока накопилось меньше одного очка.",
                     parse_mode=None,
                 )
-            return True
-
-        if subcommand == "вылупить" and len(args) == 2 and args[1].isdigit():
-            slot = int(args[1]) - 1
-            if slot not in range(pets.MAX_SLOTS):
-                await event.reply("Укажите слот от 1 до 4.", parse_mode=None)
-                return True
-            status = await store.hatch_pet_egg(chat_id, user_id, slot)
-            messages = {
-                "ok": f"🐣 Яйцо в слоте {slot + 1} вылупилось!",
-                "early": "🥚 Яйцо ещё не созрело.",
-                "not_egg": "В этом слоте нет яйца.",
-            }
-            await event.reply(messages[status], parse_mode=None)
             return True
 
         if subcommand == "переименовать" and len(args) >= 3:
@@ -152,7 +137,7 @@ async def handle_command(
 
         await event.reply(
             "Команды: каз ферма, каз ферма собрать, "
-            "каз ферма вылупить N, каз ферма переименовать N Имя",
+            "каз ферма переименовать N Имя",
             parse_mode=None,
         )
         return True

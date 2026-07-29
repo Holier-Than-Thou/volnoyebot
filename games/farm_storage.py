@@ -75,16 +75,6 @@ class FarmStoreMixin:
         )
         return spec
 
-    def _income_rate_unlocked(self, chat_id: int, user_id: int) -> float:
-        rows = self.connection.execute(
-            """
-            SELECT * FROM pets
-            WHERE chat_id = ? AND user_id = ? AND is_egg = 0
-            """,
-            (chat_id, user_id),
-        ).fetchall()
-        return sum(pets.pet_from_mapping(row).income_per_second() for row in rows)
-
     def _accrue_income_unlocked(
         self, chat_id: int, user_id: int, now: float
     ) -> float:
@@ -103,11 +93,40 @@ class FarmStoreMixin:
                 """,
                 (chat_id, user_id, now),
             )
+            self.connection.execute(
+                """
+                UPDATE pets SET is_egg = 0, egg_hatch_at = 0
+                WHERE chat_id = ? AND user_id = ?
+                    AND is_egg = 1 AND egg_hatch_at <= ?
+                """,
+                (chat_id, user_id, now),
+            )
             return 0.0
-        elapsed = max(0.0, now - float(row["updated_at"]))
-        accumulated = (
-            float(row["accumulated"])
-            + self._income_rate_unlocked(chat_id, user_id) * elapsed
+        updated_at = float(row["updated_at"])
+        accumulated = float(row["accumulated"])
+        pet_rows = self.connection.execute(
+            """
+            SELECT * FROM pets
+            WHERE chat_id = ? AND user_id = ?
+            """,
+            (chat_id, user_id),
+        ).fetchall()
+        for pet_row in pet_rows:
+            pet = pets.pet_from_mapping(pet_row)
+            income_started_at = updated_at
+            if pet.is_egg:
+                if pet.egg_hatch_at > now:
+                    continue
+                income_started_at = max(updated_at, pet.egg_hatch_at)
+            elapsed = max(0.0, now - income_started_at)
+            accumulated += pet.adult_income_per_second() * elapsed
+        self.connection.execute(
+            """
+            UPDATE pets SET is_egg = 0, egg_hatch_at = 0
+            WHERE chat_id = ? AND user_id = ?
+                AND is_egg = 1 AND egg_hatch_at <= ?
+            """,
+            (chat_id, user_id, now),
         )
         self.connection.execute(
             """
@@ -139,6 +158,36 @@ class FarmStoreMixin:
                 "pets": [pets.pet_from_mapping(row) for row in rows],
                 "now": now,
             }
+
+    async def hatch_due_pet_eggs(self) -> int:
+        """Автоматически вылупить все созревшие яйца."""
+        async with self.lock:
+            now = time.time()
+            owners = self.connection.execute(
+                """
+                SELECT DISTINCT chat_id, user_id
+                FROM pets
+                WHERE is_egg = 1 AND egg_hatch_at <= ?
+                """,
+                (now,),
+            ).fetchall()
+            egg_count = int(
+                self.connection.execute(
+                    """
+                    SELECT COUNT(*) FROM pets
+                    WHERE is_egg = 1 AND egg_hatch_at <= ?
+                    """,
+                    (now,),
+                ).fetchone()[0]
+            )
+            for owner in owners:
+                self._accrue_income_unlocked(
+                    int(owner["chat_id"]),
+                    int(owner["user_id"]),
+                    now,
+                )
+            self.connection.commit()
+            return egg_count
 
     async def award_pet_egg(
         self, chat_id: int, user_id: int
@@ -196,34 +245,6 @@ class FarmStoreMixin:
             ),
         )
 
-    async def hatch_pet_egg(
-        self, chat_id: int, user_id: int, slot_index: int
-    ) -> str:
-        """Вылупить созревшее яйцо."""
-        async with self.lock:
-            row = self.connection.execute(
-                """
-                SELECT * FROM pets
-                WHERE chat_id = ? AND user_id = ? AND slot_index = ?
-                """,
-                (chat_id, user_id, slot_index),
-            ).fetchone()
-            if row is None or not row["is_egg"]:
-                return "not_egg"
-            now = time.time()
-            if float(row["egg_hatch_at"]) > now:
-                return "early"
-            self._accrue_income_unlocked(chat_id, user_id, now)
-            self.connection.execute(
-                """
-                UPDATE pets SET is_egg = 0, egg_hatch_at = 0
-                WHERE chat_id = ? AND user_id = ? AND slot_index = ?
-                """,
-                (chat_id, user_id, slot_index),
-            )
-            self.connection.commit()
-            return "ok"
-
     async def rename_pet(
         self,
         chat_id: int,
@@ -233,6 +254,7 @@ class FarmStoreMixin:
     ) -> bool:
         """Переименовать взрослого питомца."""
         async with self.lock:
+            self._accrue_income_unlocked(chat_id, user_id, time.time())
             cursor = self.connection.execute(
                 """
                 UPDATE pets SET name = ?
@@ -249,6 +271,8 @@ class FarmStoreMixin:
     ) -> tuple[str, pets.Pet | None]:
         """Атомарно заменить двух родителей яйцом ребёнка."""
         async with self.lock:
+            now = time.time()
+            self._accrue_income_unlocked(chat_id, user_id, now)
             rows = self.connection.execute(
                 """
                 SELECT * FROM pets
@@ -267,10 +291,10 @@ class FarmStoreMixin:
                     by_slot[first_slot],
                     by_slot[second_slot],
                     min(first_slot, second_slot),
+                    now=now,
                 )
             except ValueError as error:
                 return str(error), None
-            self._accrue_income_unlocked(chat_id, user_id, child.created_at)
             self.connection.execute(
                 """
                 DELETE FROM pets

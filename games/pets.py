@@ -40,6 +40,10 @@ class Pet:
         """Вернуть пассивный доход взрослого питомца."""
         if self.is_egg:
             return 0.0
+        return self.adult_income_per_second()
+
+    def adult_income_per_second(self) -> float:
+        """Вернуть потенциальный доход питомца после вылупления."""
         return (
             BASE_INCOME_PER_SECOND
             * (1 + self.stench / 100)
