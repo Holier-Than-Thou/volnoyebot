@@ -2254,10 +2254,35 @@ async def casino_command(event) -> None:
     await event.reply("Неизвестная команда. Используйте `каз помощь`.")
 
 
+async def direct_farm_command(event) -> None:
+    """Обработать общий префикс «ферма» без слова «каз»."""
+    if not event.is_group:
+        return
+    sender = await event.get_sender()
+    chat = await event.get_chat()
+    if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
+        return
+    topic_id = casino.message_topic_id(event.message)
+    if not await store.is_topic_enabled(event.chat_id, topic_id):
+        return
+    command_line = (event.pattern_match.group(1) or "").strip()
+    args = command_line.split() if command_line else []
+    await farm.handle_command(
+        event,
+        "ферма",
+        args,
+        store,
+        sender.id,
+        display_name(sender),
+        INITIAL_BALANCE,
+    )
+
+
 restore_dice_expirations = dice.register(
     client, store, display_name, schedule_delete
 )
 casino.register(client, casino_command)
+farm.register(client, direct_farm_command)
 guess_sound.register(
     client,
     FreesoundProvider(FREESOUND_API_KEY),

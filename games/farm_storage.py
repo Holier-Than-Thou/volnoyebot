@@ -266,6 +266,22 @@ class FarmStoreMixin:
             self.connection.commit()
             return cursor.rowcount == 1
 
+    async def shelter_pet(
+        self, chat_id: int, user_id: int, slot_index: int
+    ) -> bool:
+        """Отдать питомца или яйцо из указанного слота в приют."""
+        async with self.lock:
+            self._accrue_income_unlocked(chat_id, user_id, time.time())
+            cursor = self.connection.execute(
+                """
+                DELETE FROM pets
+                WHERE chat_id = ? AND user_id = ? AND slot_index = ?
+                """,
+                (chat_id, user_id, slot_index),
+            )
+            self.connection.commit()
+            return cursor.rowcount == 1
+
     async def breed_pets(
         self, chat_id: int, user_id: int, first_slot: int, second_slot: int
     ) -> tuple[str, pets.Pet | None]:

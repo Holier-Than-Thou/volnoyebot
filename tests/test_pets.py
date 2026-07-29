@@ -120,6 +120,26 @@ class FarmStoreTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, "full")
         self.assertIsNone(egg)
 
+    async def test_shelter_removes_pet_after_accruing_income(self) -> None:
+        now = time.time()
+        pet = pets.Pet(0, "Лишний", 10, 1, 1, 0, False, 0, now)
+        self.store._insert_pet_unlocked(1, 10, pet)
+        await self.store.get_farm(1, 10)
+        self.store.connection.execute(
+            """
+            UPDATE pet_income SET updated_at = ?
+            WHERE chat_id = 1 AND user_id = 10
+            """,
+            (time.time() - 10,),
+        )
+        self.store.connection.commit()
+
+        self.assertTrue(await self.store.shelter_pet(1, 10, 0))
+        self.assertFalse(await self.store.shelter_pet(1, 10, 0))
+        snapshot = await self.store.get_farm(1, 10)
+        self.assertEqual(snapshot["pets"], [])
+        self.assertGreaterEqual(snapshot["accumulated"], 1)
+
     @patch("games.pets.random.gauss", return_value=0)
     async def test_breeding_replaces_parents_atomically(self, _gauss) -> None:
         now = time.time()

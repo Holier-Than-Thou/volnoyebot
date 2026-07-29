@@ -4,11 +4,21 @@ from __future__ import annotations
 
 import math
 
+from telethon import events
+
 from . import pets
 
 
 FARM_COMMANDS = {"ферма", "скрестить"}
 MAX_PET_NAME_LENGTH = 32
+
+
+def register(client, handler) -> None:
+    """Зарегистрировать общий префикс всех команд фермы."""
+    client.add_event_handler(
+        handler,
+        events.NewMessage(pattern=r"(?iu)^ферма(?:\s+(.+))?\s*$"),
+    )
 
 
 def earns_pet_egg(symbols: tuple[str, str, str]) -> bool:
@@ -50,6 +60,12 @@ async def handle_command(
         return False
     chat_id = event.chat_id
 
+    # «каз скрестить» — исторический вариант. Все команды с общим префиксом
+    # проходят сюда как «ферма <подкоманда>».
+    if command == "ферма" and args and args[0].casefold() == "скрестить":
+        command = "скрестить"
+        args = args[1:]
+
     if command == "ферма":
         subcommand = args[0].lower() if args else "показать"
         if subcommand in {"показать", "show"} and len(args) == 1:
@@ -77,12 +93,33 @@ async def handle_command(
             lines.extend(
                 (
                     "",
-                    "каз ферма собрать",
-                    "каз ферма переименовать N Имя",
-                    "каз скрестить N N",
+                    "ферма собрать",
+                    "ферма приют N",
+                    "ферма переименовать N Имя",
+                    "ферма скрестить N N",
+                    "Также можно использовать префикс «каз ферма».",
                 )
             )
             await event.reply("\n".join(lines), parse_mode=None)
+            return True
+
+        if subcommand == "приют" and len(args) == 2:
+            if not args[1].isdigit():
+                await event.reply("Формат: ферма приют 1", parse_mode=None)
+                return True
+            slot = int(args[1]) - 1
+            if slot not in range(pets.MAX_SLOTS):
+                await event.reply("Укажите слот от 1 до 4.", parse_mode=None)
+                return True
+            removed = await store.shelter_pet(chat_id, user_id, slot)
+            await event.reply(
+                (
+                    f"🏠 Питомец из слота {slot + 1} отдан в приют."
+                    if removed
+                    else "Этот слот уже пуст."
+                ),
+                parse_mode=None,
+            )
             return True
 
         if subcommand == "собрать" and len(args) == 1:
@@ -136,14 +173,18 @@ async def handle_command(
             return True
 
         await event.reply(
-            "Команды: каз ферма, каз ферма собрать, "
-            "каз ферма переименовать N Имя",
+            "Команды: ферма, ферма собрать, ферма приют N, "
+            "ферма переименовать N Имя, ферма скрестить N N. "
+            "После «каз» доступны те же команды.",
             parse_mode=None,
         )
         return True
 
     if len(args) != 2 or not all(argument.isdigit() for argument in args):
-        await event.reply("Формат: каз скрестить 1 2", parse_mode=None)
+        await event.reply(
+            "Формат: ферма скрестить 1 2 или каз скрестить 1 2",
+            parse_mode=None,
+        )
         return True
     first_slot, second_slot = (int(argument) - 1 for argument in args)
     if (
