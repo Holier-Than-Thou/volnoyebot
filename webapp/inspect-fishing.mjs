@@ -33,6 +33,8 @@ const capture = async (name) => {
 };
 
 await capture("00-idle");
+await page.locator('[data-rod-option="bamboo"]').click();
+await capture("01-bamboo-idle");
 await page.locator("#cast-button").click();
 
 for (let index = 0; index < 4; index += 1) {

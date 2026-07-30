@@ -522,7 +522,7 @@ h1 {
 
 .controls {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto auto 1fr auto;
   align-items: center;
   gap: 28px;
   padding: 20px 6px 10px;
@@ -545,6 +545,41 @@ h1 {
 #cast-button span, #cast-button small { display: block; }
 #cast-button span { font-weight: 800; }
 #cast-button small { margin-top: 2px; color: #ffe1c5; font-size: 9px; }
+
+.rod-picker > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #668078;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.rod-picker > div {
+  display: flex;
+  padding: 3px;
+  border: 1px solid rgba(71, 102, 92, .28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .44);
+}
+
+.rod-picker button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  color: #59736b;
+  background: transparent;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.rod-picker button.active {
+  color: #fff9eb;
+  background: #718747;
+  box-shadow: 0 3px 8px rgba(63, 85, 44, .2);
+}
 
 .control-hint {
   display: flex;
@@ -599,7 +634,9 @@ footer span {
     padding: 16px;
   }
   #cast-button { min-width: 0; }
+  .rod-picker { justify-self: end; }
   .control-hint { grid-column: 1 / -1; grid-row: 2; }
+  .record { grid-column: 1 / -1; text-align: left; }
   footer { padding: 4px 16px 18px; }
 }
 
@@ -666,6 +703,10 @@ footer span {
   image-rendering: pixelated;
   pointer-events: none;
   animation: fisher-idle 1.5s linear infinite;
+}
+
+.fisher[data-rod="bamboo"] .fisher-rod {
+  background-image: url("/assets/fishing/fisher-idle-rod-bamboo.png");
 }
 
 .fisher-seat {
@@ -748,6 +789,10 @@ footer span {
 .fisher.casting .fisher-rod {
   background-image: url("/assets/fishing/fisher-cast-rod.png");
   animation: fisher-cast .95s linear 1;
+}
+
+.fisher.casting[data-rod="bamboo"] .fisher-rod {
+  background-image: url("/assets/fishing/fisher-cast-rod-bamboo.png");
 }
 
 @keyframes fisher-idle {

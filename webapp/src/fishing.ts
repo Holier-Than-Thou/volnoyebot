@@ -1,6 +1,7 @@
 import "./fishing.css";
 
 type GameState = "idle" | "casting" | "waiting" | "playing" | "caught" | "lost";
+type RodKind = "classic" | "bamboo";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Не найден корневой элемент приложения");
@@ -80,6 +81,13 @@ app.innerHTML = `
         <span>Закинуть удочку</span>
         <small>и ждать поклёвки</small>
       </button>
+      <div class="rod-picker" role="group" aria-label="Выбор удочки">
+        <span>Удочка</span>
+        <div>
+          <button type="button" data-rod-option="classic">Обычная</button>
+          <button type="button" data-rod-option="bamboo">Бамбук</button>
+        </div>
+      </div>
       <div class="control-hint">
         <span class="mouse-icon">↟</span>
         <p><b>Удерживайте ЛКМ, палец или пробел</b><br>Нажатие тянет маркер вверх, отпускание — вниз.</p>
@@ -118,6 +126,9 @@ const statusIcon = get<HTMLElement>("status-icon");
 const statusTitle = get<HTMLElement>("status-title");
 const statusText = get<HTMLElement>("status-text");
 const recordValue = get<HTMLElement>("record-value");
+const rodButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("[data-rod-option]"),
+);
 
 let state: GameState = "idle";
 let waitTimer: number | undefined;
@@ -133,6 +144,18 @@ let targetChangeIn = 0;
 let catchProgress = 0.42;
 let roundStartedAt = 0;
 let bestTime: number | null = null;
+let selectedRod: RodKind = "classic";
+
+function selectRod(rod: RodKind): void {
+  selectedRod = rod;
+  fisher.dataset.rod = rod;
+  rodButtons.forEach((button) => {
+    const active = button.dataset.rodOption === rod;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  window.localStorage.setItem("fishing-test-rod", rod);
+}
 
 function setStatus(icon: string, title: string, text: string): void {
   statusIcon.textContent = icon;
@@ -293,6 +316,12 @@ function setHolding(value: boolean): void {
 }
 
 castButton.addEventListener("click", cast);
+rodButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const rod = button.dataset.rodOption;
+    if (rod === "classic" || rod === "bamboo") selectRod(rod);
+  });
+});
 scene.addEventListener("pointerdown", (event) => {
   if (state !== "playing") return;
   event.preventDefault();
@@ -316,4 +345,9 @@ window.addEventListener("keyup", (event) => {
 window.addEventListener("blur", () => setHolding(false));
 window.addEventListener("resize", updateFishingLine);
 
+const savedRod = window.localStorage.getItem("fishing-test-rod");
+if (savedRod === "classic" || savedRod === "bamboo") {
+  selectedRod = savedRod;
+}
+selectRod(selectedRod);
 setState("idle");
