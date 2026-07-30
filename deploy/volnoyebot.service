@@ -1,0 +1,25 @@
+[Unit]
+Description=Volnoyebot Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=volnoyebot
+Group=volnoyebot
+WorkingDirectory=/opt/volnoyebot
+EnvironmentFile=/etc/volnoyebot/volnoyebot.env
+Environment=ENV_FILE=/etc/volnoyebot/volnoyebot.env
+Environment=DATA_DIR=/var/lib/volnoyebot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/volnoyebot/.venv/bin/python /opt/volnoyebot/bot.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/volnoyebot
+
+[Install]
+WantedBy=multi-user.target

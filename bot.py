@@ -31,7 +31,9 @@ from games.release import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+ENV_FILE = Path(os.getenv("ENV_FILE", BASE_DIR / ".env"))
+load_dotenv(ENV_FILE)
+DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR))
 
 
 def env_int(name: str, default: int | None = None) -> int:
@@ -1775,8 +1777,10 @@ def format_history(rows: list[dict], viewer_id: int | None) -> str:
     return "\n".join(lines)
 
 
-client = TelegramClient(str(BASE_DIR / SESSION_NAME), API_ID, API_HASH)
-store = BalanceStore(BASE_DIR / "casino.sqlite3")
+client = TelegramClient(str(DATA_DIR / SESSION_NAME), API_ID, API_HASH)
+store = BalanceStore(
+    Path(os.getenv("CASINO_DATABASE_PATH", DATA_DIR / "casino.sqlite3"))
+)
 admin_id = ADMIN_ID
 bot_username = ""
 cleanup_tasks: set[asyncio.Task] = set()
@@ -2655,7 +2659,12 @@ museum.register(client, direct_museum_command)
 guess_sound.register(
     client,
     FreesoundProvider(FREESOUND_API_KEY),
-    BASE_DIR / "guess_sound.sqlite3",
+    Path(
+        os.getenv(
+            "GUESS_SOUND_DATABASE_PATH",
+            DATA_DIR / "guess_sound.sqlite3",
+        )
+    ),
     display_name,
     lambda: admin_id,
 )
