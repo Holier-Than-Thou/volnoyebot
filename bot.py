@@ -71,6 +71,7 @@ HISTORY_LIMIT = 10
 WORK_PAYOUT_AMOUNT = 1_000
 WORK_PAYOUT_INTERVAL_SECONDS = 30 * 60
 WORK_ACTIVITY_TIMEOUT_SECONDS = 3 * 24 * 60 * 60
+NEW_PLAYER_TRANSFER_LOCK_SECONDS = 24 * 60 * 60
 PET_HATCH_CHECK_INTERVAL_SECONDS = 10
 WORK_PAYOUT_MESSAGE = (
     "Вы поработали в долбильне и заработали 1000 очков. Время депать!"
@@ -101,6 +102,7 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                 balance INTEGER NOT NULL CHECK (balance >= 0),
                 last_bet_at REAL NOT NULL DEFAULT 0,
                 last_command_at REAL NOT NULL DEFAULT 0,
+                first_command_at REAL,
                 PRIMARY KEY (chat_id, user_id)
             )
             """
@@ -145,6 +147,10 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                         )
                 )
                 """
+            )
+        if "first_command_at" not in columns:
+            self.connection.execute(
+                "ALTER TABLE balances ADD COLUMN first_command_at REAL"
             )
         self.connection.execute(
             """
@@ -530,22 +536,46 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
     ) -> None:
         """Запомнить последнюю команду пользователя в этом чате."""
         async with self.lock:
+            now = time.time()
+            has_played = self.connection.execute(
+                """
+                SELECT 1
+                FROM game_history
+                WHERE chat_id = ?
+                    AND (
+                        player_id = ?
+                        OR (
+                            game_type = 'dice'
+                            AND opponent_id = ?
+                        )
+                    )
+                LIMIT 1
+                """,
+                (chat_id, user_id, user_id),
+            ).fetchone()
+            first_command_at = None if has_played is not None else now
             self.connection.execute(
                 """
                 INSERT INTO balances(
-                    chat_id, user_id, display_name, balance, last_command_at
+                    chat_id, user_id, display_name, balance,
+                    last_command_at, first_command_at
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(chat_id, user_id) DO UPDATE SET
                     display_name = excluded.display_name,
-                    last_command_at = excluded.last_command_at
+                    last_command_at = excluded.last_command_at,
+                    first_command_at = COALESCE(
+                        balances.first_command_at,
+                        excluded.first_command_at
+                    )
                 """,
                 (
                     chat_id,
                     user_id,
                     display_name,
                     INITIAL_BALANCE,
-                    time.time(),
+                    now,
+                    first_command_at,
                 ),
             )
             self.connection.commit()
@@ -714,7 +744,7 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
         recipient_id: int,
         recipient_name: str,
         amount: int,
-    ) -> tuple[bool, int, int]:
+    ) -> tuple[str, int, int, float]:
         """Атомарно перевести очки между двумя пользователями одного чата."""
         async with self.lock:
             self.connection.execute(
@@ -735,6 +765,36 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                 """,
                 (chat_id, recipient_id, recipient_name, INITIAL_BALANCE),
             )
+            sender_row = self.connection.execute(
+                """
+                SELECT balance, first_command_at
+                FROM balances
+                WHERE chat_id = ? AND user_id = ?
+                """,
+                (chat_id, sender_id),
+            ).fetchone()
+            first_command_at = sender_row["first_command_at"]
+            remaining = (
+                NEW_PLAYER_TRANSFER_LOCK_SECONDS
+                - (time.time() - float(first_command_at))
+                if first_command_at is not None
+                else 0
+            )
+            if remaining > 0:
+                self.connection.commit()
+                recipient_balance = self.connection.execute(
+                    """
+                    SELECT balance FROM balances
+                    WHERE chat_id = ? AND user_id = ?
+                    """,
+                    (chat_id, recipient_id),
+                ).fetchone()["balance"]
+                return (
+                    "locked",
+                    int(sender_row["balance"]),
+                    int(recipient_balance),
+                    remaining,
+                )
             cursor = self.connection.execute(
                 """
                 UPDATE balances SET balance = balance - ?
@@ -779,7 +839,8 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                 "SELECT balance FROM balances WHERE chat_id = ? AND user_id = ?",
                 (chat_id, recipient_id),
             ).fetchone()["balance"]
-            return bool(cursor.rowcount), int(sender_balance), int(recipient_balance)
+            status = "ok" if cursor.rowcount else "insufficient"
+            return status, int(sender_balance), int(recipient_balance), 0
 
     async def create_dice_challenge(
         self,
@@ -2121,15 +2182,24 @@ async def casino_command(event) -> None:
             return
 
         recipient_name = display_name(recipient)
-        success, sender_balance, recipient_balance = await store.transfer(
-            chat_id,
-            sender.id,
-            name,
-            recipient.id,
-            recipient_name,
-            amount,
+        status, sender_balance, recipient_balance, remaining = (
+            await store.transfer(
+                chat_id,
+                sender.id,
+                name,
+                recipient.id,
+                recipient_name,
+                amount,
+            )
         )
-        if not success:
+        if status == "locked":
+            hours = max(1, math.ceil(remaining / 3600))
+            await event.reply(
+                "Переводы для новых игроков открываются через сутки после "
+                f"первой команды. Осталось примерно {hours} ч."
+            )
+            return
+        if status == "insufficient":
             await event.reply(
                 f"Недостаточно очков. Текущий баланс: {sender_balance}."
             )
