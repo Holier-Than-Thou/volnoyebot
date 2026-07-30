@@ -647,12 +647,24 @@ footer span {
   width: clamp(225px, 25vw, 305px);
   height: auto;
   aspect-ratio: 100 / 121;
-  background-image: url("/assets/fishing/fisher-idle.png");
+  background-image: url("/assets/fishing/fisher-idle-body.png");
   background-position: 0 0;
   background-size: 400% 100%;
   background-repeat: no-repeat;
   image-rendering: pixelated;
   transform: translateX(-45%);
+  animation: fisher-idle 1.5s linear infinite;
+}
+
+.fisher-rod {
+  position: absolute;
+  inset: 0;
+  background-image: url("/assets/fishing/fisher-idle-rod.png");
+  background-position: 0 0;
+  background-size: 400% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
   animation: fisher-idle 1.5s linear infinite;
 }
 
@@ -727,9 +739,14 @@ footer span {
 }
 
 .fisher.casting {
-  background-image: url("/assets/fishing/fisher-cast.png");
+  background-image: url("/assets/fishing/fisher-cast-body.png");
   transform: translateX(-45%) scale(1.09);
   transform-origin: 47% 87%;
+  animation: fisher-cast .95s linear 1;
+}
+
+.fisher.casting .fisher-rod {
+  background-image: url("/assets/fishing/fisher-cast-rod.png");
   animation: fisher-cast .95s linear 1;
 }
 
