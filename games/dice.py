@@ -166,6 +166,11 @@ def register(client, store, display_name, schedule_delete):
         )
         if status in {"not_found", "wrong_user"}:
             return
+        await store.mark_command_activity(
+            event.chat_id,
+            sender.id,
+            display_name(sender),
+        )
         if status == "expired":
             if await store.is_auto_delete_enabled(event.chat_id):
                 try:

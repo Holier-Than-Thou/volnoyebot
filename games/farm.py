@@ -17,7 +17,7 @@ MAX_PET_NAME_LENGTH = 32
 PET_TRANSFER_TTL_SECONDS = 60
 
 
-def register(client, handler, store) -> None:
+def register(client, handler, store, display_name) -> None:
     """Зарегистрировать общий префикс всех команд фермы."""
     client.add_event_handler(
         handler,
@@ -45,6 +45,11 @@ def register(client, handler, store) -> None:
         )
         if status in {"not_found", "wrong_user"}:
             return
+        await store.mark_command_activity(
+            event.chat_id,
+            sender.id,
+            display_name(sender),
+        )
         if status == "expired":
             await event.reply("Время принятия питомца истекло.", parse_mode=None)
             return

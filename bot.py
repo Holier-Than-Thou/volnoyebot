@@ -126,6 +126,26 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                 "UPDATE balances SET last_command_at = ?",
                 (time.time(),),
             )
+            # Игроки без единой завершённой игры должны сначала явно
+            # воспользоваться командой после обновления.
+            self.connection.execute(
+                """
+                UPDATE balances
+                SET last_command_at = 0
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM game_history AS history
+                    WHERE history.chat_id = balances.chat_id
+                        AND (
+                            history.player_id = balances.user_id
+                            OR (
+                                history.game_type = 'dice'
+                                AND history.opponent_id = balances.user_id
+                            )
+                        )
+                )
+                """
+            )
         self.connection.execute(
             """
             CREATE TABLE IF NOT EXISTS chat_settings (
@@ -2426,7 +2446,7 @@ restore_dice_expirations = dice.register(
     client, store, display_name, schedule_delete
 )
 casino.register(client, casino_command)
-farm.register(client, direct_farm_command, store)
+farm.register(client, direct_farm_command, store, display_name)
 guess_sound.register(
     client,
     FreesoundProvider(FREESOUND_API_KEY),
