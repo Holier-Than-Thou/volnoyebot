@@ -47,5 +47,34 @@ await capture("10-waiting-a");
 await page.clock.runFor(500);
 await capture("11-waiting-b");
 
+await page.reload();
+await page.locator('[data-rod-option="bamboo"]').click();
+await page.locator("#fisher").evaluate((element) => {
+  element.classList.add("casting");
+  element.style.animation = "none";
+});
+for (const [index, position] of ["0", "33.333%", "66.667%", "100%"].entries()) {
+  await page.locator("#fisher").evaluate(
+    (element, backgroundPosition) => {
+      element.style.backgroundPositionX = backgroundPosition;
+    },
+    position,
+  );
+  await capture(`bamboo-cast-frame-${index + 1}`);
+}
+
+await page.reload();
+await page.locator('[data-rod-option="bamboo"]').click();
+await page.locator("#cast-button").click();
+await page.clock.runFor(1000);
+if (await page.locator("#lake-scene").getAttribute("data-state") !== "waiting") {
+  throw new Error("Игра не перешла в ожидание поклёвки");
+}
+await page.locator("#cast-button").click();
+if (await page.locator("#lake-scene").getAttribute("data-state") !== "idle") {
+  throw new Error("Повторное нажатие не прервало ожидание");
+}
+await capture("12-waiting-cancelled");
+
 await browser.close();
 await server.close();

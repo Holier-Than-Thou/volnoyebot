@@ -181,8 +181,8 @@ function setState(nextState: GameState): void {
     castButton.innerHTML = "<span>Забрасываем…</span><small>держите удочку крепче</small>";
   } else if (nextState === "waiting") {
     setStatus("…", "Ждём поклёвку", "Следите за поплавком.");
-    castButton.disabled = true;
-    castButton.innerHTML = "<span>Удочка в воде</span><small>рыба уже где-то рядом</small>";
+    castButton.disabled = false;
+    castButton.innerHTML = "<span>Смотать удочку</span><small>прервать ожидание поклёвки</small>";
   } else if (nextState === "playing") {
     setStatus("!", "Клюёт!", "Удерживайте маркер внутри зелёной зоны.");
     castButton.disabled = true;
@@ -230,7 +230,13 @@ function updateFishingLine(): void {
 }
 
 function cast(): void {
-  if (["casting", "waiting", "playing"].includes(state)) return;
+  if (state === "waiting") {
+    window.clearTimeout(waitTimer);
+    waitTimer = undefined;
+    setState("idle");
+    return;
+  }
+  if (["casting", "playing"].includes(state)) return;
   window.clearTimeout(waitTimer);
   window.cancelAnimationFrame(animationFrame ?? 0);
   setState("casting");
