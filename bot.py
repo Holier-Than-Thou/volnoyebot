@@ -70,6 +70,7 @@ GAME_MESSAGE_TTL_SECONDS = 5
 HISTORY_LIMIT = 10
 WORK_PAYOUT_AMOUNT = 1_000
 WORK_PAYOUT_INTERVAL_SECONDS = 30 * 60
+WORK_ACTIVITY_TIMEOUT_SECONDS = 3 * 24 * 60 * 60
 PET_HATCH_CHECK_INTERVAL_SECONDS = 10
 WORK_PAYOUT_MESSAGE = (
     "Вы поработали в долбильне и заработали 1000 очков. Время депать!"
@@ -99,6 +100,7 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                 display_name TEXT NOT NULL,
                 balance INTEGER NOT NULL CHECK (balance >= 0),
                 last_bet_at REAL NOT NULL DEFAULT 0,
+                last_command_at REAL NOT NULL DEFAULT 0,
                 PRIMARY KEY (chat_id, user_id)
             )
             """
@@ -112,6 +114,17 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
             self.connection.execute(
                 "ALTER TABLE balances "
                 "ADD COLUMN last_bet_at REAL NOT NULL DEFAULT 0"
+            )
+        if "last_command_at" not in columns:
+            self.connection.execute(
+                "ALTER TABLE balances "
+                "ADD COLUMN last_command_at REAL NOT NULL DEFAULT 0"
+            )
+            # Исторически команды не записывались. Начинаем отсчёт неактивности
+            # для существующих пользователей с момента установки обновления.
+            self.connection.execute(
+                "UPDATE balances SET last_command_at = ?",
+                (time.time(),),
             )
         self.connection.execute(
             """
@@ -488,6 +501,34 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                 (chat_id, user_id),
             ).fetchone()
             return int(row["balance"])
+
+    async def mark_command_activity(
+        self,
+        chat_id: int,
+        user_id: int,
+        display_name: str,
+    ) -> None:
+        """Запомнить последнюю команду пользователя в этом чате."""
+        async with self.lock:
+            self.connection.execute(
+                """
+                INSERT INTO balances(
+                    chat_id, user_id, display_name, balance, last_command_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    last_command_at = excluded.last_command_at
+                """,
+                (
+                    chat_id,
+                    user_id,
+                    display_name,
+                    INITIAL_BALANCE,
+                    time.time(),
+                ),
+            )
+            self.connection.commit()
 
     async def get_assets(self, chat_id: int, user_id: int) -> dict[str, bool]:
         """Вернуть ещё не обменянные ресурсы пользователя."""
@@ -1039,16 +1080,23 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
     ) -> list[dict]:
         """Начислить оплату всем чатам либо одному указанному чату."""
         async with self.lock:
+            now = time.time()
+            active_since = now - WORK_ACTIVITY_TIMEOUT_SECONDS
             chat_filter = (
                 "" if target_chat_id is None else "AND b.chat_id = ?"
             )
-            parameters = () if target_chat_id is None else (target_chat_id,)
+            parameters = (
+                (active_since,)
+                if target_chat_id is None
+                else (active_since, target_chat_id)
+            )
             recipients = self.connection.execute(
                 f"""
                 SELECT b.chat_id, b.user_id, b.display_name
                 FROM balances AS b
                 JOIN chat_settings AS s ON s.chat_id = b.chat_id
                 WHERE s.activated = 1
+                    AND b.last_command_at >= ?
                     {chat_filter}
                 ORDER BY b.chat_id, b.user_id
                 """,
@@ -1076,15 +1124,16 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                             g.player_id = b.user_id
                             OR g.opponent_id = b.user_id
                         )
-                    WHERE b.chat_id = ? AND b.balance = 0
+                    WHERE b.chat_id = ?
+                        AND b.balance = 0
+                        AND b.last_command_at >= ?
                     GROUP BY b.user_id, b.display_name
                     ORDER BY last_game_at DESC, b.user_id DESC
                     LIMIT 10
                     """,
-                    (chat_id,),
+                    (chat_id, active_since),
                 ).fetchall()
 
-            now = time.time()
             self.connection.executemany(
                 """
                 UPDATE balances SET balance = balance + ?
@@ -1792,6 +1841,17 @@ def is_tagged_start(text: str) -> bool:
     return bool(mention and re.search(r"(?iu)\bстарт\b", text))
 
 
+def is_bot_command(text: str) -> bool:
+    """Распознать сообщения, адресованные одному из обработчиков бота."""
+    return bool(
+        re.match(
+            r"(?iu)^(?:каз(?:\s|$)|кз\s+кд(?:\s|$)|"
+            r"ферма(?:\s|$)|кости(?:\s|$)|зг(?:\s|$))",
+            text.strip(),
+        )
+    )
+
+
 @client.on(events.NewMessage)
 async def activation_gate(event) -> None:
     """Не пропускать события чата до явной активации администратором."""
@@ -1805,11 +1865,27 @@ async def activation_gate(event) -> None:
         and is_tagged_start(event.raw_text or "")
     ):
         await store.activate_chat(event.chat_id)
+        await store.mark_command_activity(
+            event.chat_id,
+            sender.id,
+            display_name(sender),
+        )
         await event.reply("▶️ Бот активирован и принимает команды в этом чате.")
         raise events.StopPropagation
 
     if not await store.is_chat_activated(event.chat_id):
         raise events.StopPropagation
+
+    if (
+        isinstance(sender, User)
+        and not sender.bot
+        and is_bot_command(event.raw_text or "")
+    ):
+        await store.mark_command_activity(
+            event.chat_id,
+            sender.id,
+            display_name(sender),
+        )
 
 
 async def target_from_command(event, args: list[str]) -> tuple[User, int] | None:
