@@ -42,7 +42,6 @@ app.innerHTML = `
         <i></i><i></i>
       </div>
       <div class="fisher" id="fisher" aria-label="Рыбак сидит на табурете на пирсе">
-        <span class="fisher-rod" aria-hidden="true"></span>
         <span class="visually-hidden">Рыбак сидит с удочкой</span>
       </div>
       <svg class="fishing-line-overlay" id="fishing-line-overlay" aria-hidden="true">
