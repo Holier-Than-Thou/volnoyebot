@@ -107,15 +107,27 @@ def create_statue_roll(
 
 
 def parse_create_arguments(args: list[str]) -> tuple[int, str] | None:
-    """Разобрать обе формы: «10 золота Б» и «Б 10 золота»."""
+    """Разобрать полную и короткие формы количества золота."""
     filtered = [
         value
         for value in args
-        if value.casefold() not in {"золото", "золота"}
+        if value.casefold() not in {"з", "золото", "золота"}
     ]
     if len(filtered) != 2:
         return None
-    amount = next((int(value) for value in filtered if value.isdigit()), None)
+    amount = next(
+        (
+            int(value[:-1])
+            for value in filtered
+            if value.casefold().endswith("з") and value[:-1].isdigit()
+        ),
+        None,
+    )
+    if amount is None:
+        amount = next(
+            (int(value) for value in filtered if value.isdigit()),
+            None,
+        )
     size = next(
         (
             normalize_size_code(value)

@@ -47,6 +47,16 @@ class MuseumRulesTests(unittest.TestCase):
             (10, "В"),
         )
 
+    def test_short_gold_forms(self) -> None:
+        self.assertEqual(
+            museum.parse_create_arguments(["10з", "Б"]),
+            (10, "Б"),
+        )
+        self.assertEqual(
+            museum.parse_create_arguments(["Г", "10", "з"]),
+            (10, "Г"),
+        )
+
 
 class TestStore(MuseumStoreMixin):
     def __init__(self) -> None:

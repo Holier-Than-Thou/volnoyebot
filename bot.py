@@ -2538,8 +2538,8 @@ async def handle_museum_command(
         parsed = museum.parse_create_arguments(args[1:])
         if parsed is None:
             await event.reply(
-                "Формат: `музей создать 10 золота Б` или "
-                "`музей создать Б 10 золота`.\n"
+                "Формат: `музей создать 10 золота Б`, "
+                "`музей создать 10з Б` или `музей создать Б 10 з`.\n"
                 "Размеры: Б — большая, Г — гигантская, В — великая."
             )
             return
