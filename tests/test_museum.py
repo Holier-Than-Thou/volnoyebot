@@ -18,7 +18,8 @@ class MuseumRulesTests(unittest.TestCase):
         self.assertIn("ровно две 7️⃣", text)
         self.assertIn("Ужасное: ×−2", text)
         self.assertIn("9 000 × 2 = 18 000 очков/ч", text)
-        self.assertIn("музей создать 10з Б", text)
+        self.assertIn("музей создать Хз Б/Г/В", text)
+        self.assertIn("Большая статуя за 10 🥇", text)
 
     def test_all_in_gold_except_exactly_two_sevens(self) -> None:
         self.assertEqual(
