@@ -1407,7 +1407,7 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                 """
                 SELECT display_name, balance
                 FROM balances WHERE chat_id = ?
-                ORDER BY balance DESC, display_name ASC LIMIT 10
+                ORDER BY balance DESC, display_name ASC
                 """,
                 (chat_id,),
             ).fetchall()
@@ -1439,7 +1439,6 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
                     AND history.game_type = 'casino'
                 GROUP BY history.player_id, balances.display_name
                 ORDER BY rtp {direction}, games DESC, display_name ASC
-                LIMIT 10
                 """,
                 (chat_id,),
             ).fetchall()
@@ -1952,15 +1951,29 @@ async def casino_command(event) -> None:
         return
 
     if command == "баланс":
-        balance = await store.get_or_create(chat_id, sender.id, name)
-        assets = await store.get_assets(chat_id, sender.id)
+        target_user = sender
+        target_name = name
+        if casino.is_explicit_message_reply(event.message):
+            replied = await event.get_reply_message()
+            replied_user = await replied.get_sender()
+            if not isinstance(replied_user, User) or replied_user.bot:
+                await event.reply(
+                    "Ответьте командой на сообщение обычного пользователя."
+                )
+                return
+            target_user = replied_user
+            target_name = display_name(replied_user)
+        balance = await store.get_or_create(
+            chat_id, target_user.id, target_name
+        )
+        assets = await store.get_assets(chat_id, target_user.id)
         asset_icons = " ".join(
             ASSETS[asset_name][1]
             for asset_name, available in assets.items()
             if available
         )
         await event.reply(
-            f"💰 {name}: {balance} очков\n"
+            f"💰 {target_name}: {balance} очков\n"
             f"Ресурсы: {asset_icons or 'нет'}"
         )
         return
@@ -2063,14 +2076,19 @@ async def casino_command(event) -> None:
                 await event.reply("Статистика казино в этом чате пока пуста.")
                 return
             direction = "убыванию" if descending else "возрастанию"
-            lines = [f"🏆 RTP игроков по {direction}:"]
-            lines.extend(
+            leaderboard_rows = [
                 f"{index}. {row['display_name']} — {row['rtp']:.2f}% "
                 f"({row['games']} игр, ставки: "
                 f"{format_points(int(row['stakes']))})"
                 for index, row in enumerate(rows, start=1)
+            ]
+            await event.reply(
+                casino.fit_telegram_message(
+                    f"🏆 RTP игроков по {direction}:",
+                    leaderboard_rows,
+                ),
+                parse_mode=None,
             )
-            await event.reply("\n".join(lines), parse_mode=None)
             return
         if args:
             await event.reply(
@@ -2082,12 +2100,16 @@ async def casino_command(event) -> None:
         if not rows:
             await event.reply("Таблица пока пуста. Используйте `каз раздать`.")
             return
-        lines = ["🏆 Балансы чата:"]
-        lines.extend(
+        leaderboard_rows = [
             f"{index}. {row['display_name']} — {row['balance']}"
             for index, row in enumerate(rows, start=1)
+        ]
+        await event.reply(
+            casino.fit_telegram_message(
+                "🏆 Балансы чата:", leaderboard_rows
+            ),
+            parse_mode=None,
         )
-        await event.reply("\n".join(lines))
         return
 
     if command == "аналитика":

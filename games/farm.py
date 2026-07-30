@@ -122,12 +122,36 @@ async def handle_command(
         if subcommand in {"показать", "show"} and len(args) == 1:
             args = []
         if not args:
-            snapshot = await store.get_farm(chat_id, user_id)
+            target_user_id = user_id
+            target_name = display_name
+            if is_explicit_message_reply(event.message):
+                replied = await event.get_reply_message()
+                target_user = await replied.get_sender()
+                if not isinstance(target_user, User) or target_user.bot:
+                    await event.reply(
+                        "Ответьте командой на сообщение обычного пользователя.",
+                        parse_mode=None,
+                    )
+                    return True
+                target_user_id = target_user.id
+                target_name = " ".join(
+                    part
+                    for part in (
+                        target_user.first_name,
+                        target_user.last_name,
+                    )
+                    if part
+                ) or (
+                    f"@{target_user.username}"
+                    if target_user.username
+                    else str(target_user.id)
+                )
+            snapshot = await store.get_farm(chat_id, target_user_id)
             pet_by_slot = {
                 pet.slot_index: pet for pet in snapshot["pets"]
             }
             lines = [
-                "🧬 Генетическая Мерзость",
+                f"🧬 Генетическая Мерзость — {target_name}",
                 "Специализация: "
                 f"{pets.SPEC_EMOJI[snapshot['spec']]} "
                 f"{pets.SPEC_NAMES[snapshot['spec']]}",

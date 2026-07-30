@@ -15,6 +15,33 @@ TRIPLE_PRIZES = {
 SLOT_ANIMATION_SECONDS = 2.4
 
 
+def fit_telegram_message(
+    heading: str,
+    rows: list[str],
+    max_length: int = 4096,
+) -> str:
+    """Уместить максимум целых строк рейтинга в одно сообщение Telegram."""
+    selected = [heading]
+    for row in rows:
+        candidate = "\n".join((*selected, row))
+        if len(candidate) > max_length:
+            break
+        selected.append(row)
+
+    shown = len(selected) - 1
+    omitted = len(rows) - shown
+    if omitted:
+        footer = f"…ещё игроков: {omitted}"
+        while len("\n".join((*selected, footer))) > max_length and shown:
+            selected.pop()
+            shown -= 1
+            omitted += 1
+            footer = f"…ещё игроков: {omitted}"
+        if len("\n".join((*selected, footer))) <= max_length:
+            selected.append(footer)
+    return "\n".join(selected)
+
+
 def message_topic_id(message) -> int:
     """Вернуть ID топика; основной топик и обычный чат обозначаются нулём."""
     reply_header = getattr(message, "reply_to", None)
@@ -50,7 +77,7 @@ def is_explicit_message_reply(message) -> bool:
 def help_text(min_bet: int) -> str:
     return f"""🎰 Казино «Три топора»
 
-каз баланс
+каз баланс (можно ответом на сообщение игрока)
 каз <сумма от {min_bet}>
 каз ставка <сумма от {min_bet}>
 каз ва-банк / каз вабанк
@@ -61,7 +88,7 @@ def help_text(min_bet: int) -> str:
 каз топ RTP / каз топ RTP возр
 каз лог / каз лог все
 каз аналитика
-каз ферма
+каз ферма (можно ответом на сообщение игрока)
 каз ферма собрать
 каз ферма дать N (ответом игроку)
 каз ферма приют N

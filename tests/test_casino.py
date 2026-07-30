@@ -117,6 +117,25 @@ class CasinoRulesTest(unittest.TestCase):
             ["Высокий", "Средний", "Низкий"],
         )
 
+    def test_leaderboard_includes_every_row_that_fits(self) -> None:
+        message = casino.fit_telegram_message(
+            "Топ",
+            ["1. Первый", "2. Второй"],
+        )
+        self.assertEqual(message, "Топ\n1. Первый\n2. Второй")
+
+    def test_leaderboard_stays_within_limit_and_reports_omitted_rows(
+        self,
+    ) -> None:
+        message = casino.fit_telegram_message(
+            "Топ",
+            [f"{index}. Игрок" for index in range(1, 101)],
+            max_length=80,
+        )
+        self.assertLessEqual(len(message), 80)
+        self.assertIn("…ещё игроков:", message)
+        self.assertNotIn("100. Игрок", message)
+
 
 if __name__ == "__main__":
     unittest.main()
