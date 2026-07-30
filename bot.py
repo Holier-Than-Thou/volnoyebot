@@ -19,9 +19,10 @@ from telethon import TelegramClient, events
 from telethon.tl import types
 from telethon.tl.types import Channel, Chat, MessageMediaDice, User
 
-from games import casino, dice, farm, guess_sound
+from games import casino, dice, farm, guess_sound, museum
 from games.farm_storage import FarmStoreMixin, initialize_farm_schema
 from games.guess_sound.freesound import FreesoundProvider
+from games.museum_storage import MuseumStoreMixin, initialize_museum_schema
 from games.release import (
     RELEASE_ID,
     RELEASE_SUMMARY,
@@ -73,6 +74,7 @@ WORK_PAYOUT_INTERVAL_SECONDS = 30 * 60
 WORK_ACTIVITY_TIMEOUT_SECONDS = 3 * 24 * 60 * 60
 NEW_PLAYER_TRANSFER_LOCK_SECONDS = 24 * 60 * 60
 PET_HATCH_CHECK_INTERVAL_SECONDS = 10
+MUSEUM_INCOME_CHECK_INTERVAL_SECONDS = 60
 WORK_PAYOUT_MESSAGE = (
     "Вы поработали в долбильне и заработали 1000 очков. Время депать!"
 )
@@ -86,7 +88,7 @@ ASSETS = {
 HELP_TEXT = casino.help_text(MIN_BET)
 
 
-class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
+class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
     """Небольшое SQLite-хранилище балансов по чату и пользователю."""
 
     def __init__(self, path: Path) -> None:
@@ -323,6 +325,7 @@ class BalanceStore(FarmStoreMixin, ReleaseStoreMixin):
             """
         )
         initialize_farm_schema(self.connection)
+        initialize_museum_schema(self.connection)
         initialize_release_schema(self.connection)
         self.connection.commit()
 
@@ -1825,6 +1828,13 @@ async def pet_hatching_loop() -> None:
         await asyncio.sleep(PET_HATCH_CHECK_INTERVAL_SECONDS)
 
 
+async def museum_income_loop() -> None:
+    """Раз в минуту начислять все завершённые часы дохода музеев."""
+    while True:
+        await store.accrue_all_museum_income()
+        await asyncio.sleep(MUSEUM_INCOME_CHECK_INTERVAL_SECONDS)
+
+
 async def announce_release() -> None:
     """Опубликовать и попытаться закрепить текущую сводку изменений."""
     targets = await store.pending_release_targets(RELEASE_ID)
@@ -1927,7 +1937,7 @@ def is_bot_command(text: str) -> bool:
     return bool(
         re.match(
             r"(?iu)^(?:каз(?:\s|$)|кз\s+кд(?:\s|$)|"
-            r"ферма(?:\s|$)|кости(?:\s|$)|зг(?:\s|$))",
+            r"ферма(?:\s|$)|музей(?:\s|$)|кости(?:\s|$)|зг(?:\s|$))",
             text.strip(),
         )
     )
@@ -2123,6 +2133,7 @@ async def casino_command(event) -> None:
         balance = await store.get_or_create(
             chat_id, target_user.id, target_name
         )
+        gold = await store.get_museum_gold(chat_id, target_user.id)
         assets = await store.get_assets(chat_id, target_user.id)
         asset_icons = " ".join(
             ASSETS[asset_name][1]
@@ -2131,6 +2142,7 @@ async def casino_command(event) -> None:
         )
         await event.reply(
             f"💰 {target_name}: {balance} очков\n"
+            f"🪙 Золото: {gold}\n"
             f"Ресурсы: {asset_icons or 'нет'}"
         )
         return
@@ -2315,6 +2327,10 @@ async def casino_command(event) -> None:
         await event.reply(format_chat_casino_analytics(analytics))
         return
 
+    if command == "музей":
+        await handle_museum_command(event, sender, name, args)
+        return
+
     if await farm.handle_command(
         event,
         command,
@@ -2396,6 +2412,20 @@ async def casino_command(event) -> None:
             result = casino.decode_slot(slot_value)
             multiplier, prize_title = casino.get_prize(result)
             payout = bet * multiplier
+            gold_reward = (
+                museum.all_in_gold_reward(bet, result)
+                if all_in
+                else 0
+            )
+            gold_balance = (
+                await store.award_museum_gold(
+                    chat_id,
+                    sender.id,
+                    gold_reward,
+                )
+                if gold_reward
+                else None
+            )
         except Exception:
             # При ошибке отправки пользователь не должен терять ставку.
             balance = await store.add_points(chat_id, sender.id, bet)
@@ -2407,6 +2437,12 @@ async def casino_command(event) -> None:
 
         # Значение известно сразу, но ответ ждёт окончания анимации клиента.
         await asyncio.sleep(casino.SLOT_ANIMATION_SECONDS)
+        gold_text = (
+            f"\n🪙 Получено золота: {gold_reward}. "
+            f"Всего: {gold_balance}."
+            if gold_reward
+            else ""
+        )
         if payout:
             balance = await store.add_points(chat_id, sender.id, payout)
             await store.record_casino_game(
@@ -2417,6 +2453,7 @@ async def casino_command(event) -> None:
                 f"{prize_title}! Выплата: {payout} "
                 f"(чистый результат: +{net}).\n"
                 f"Баланс: {balance}"
+                f"{gold_text}"
             )
         else:
             await store.record_casino_game(
@@ -2425,6 +2462,7 @@ async def casino_command(event) -> None:
             result_message = await event.reply(
                 f"Комбинация не сыграла. Списано: {bet}.\n"
                 f"Баланс: {balance_after_bet}"
+                f"{gold_text}"
             )
             schedule_delete(chat, slot_message, result_message)
         if farm.earns_pet_egg(result):
@@ -2488,6 +2526,97 @@ async def casino_command(event) -> None:
     await event.reply("Неизвестная команда. Используйте `каз помощь`.")
 
 
+async def handle_museum_command(
+    event,
+    sender: User,
+    sender_name: str,
+    args: list[str],
+) -> None:
+    """Показать музей либо создать статую за золото."""
+    chat_id = event.chat_id
+    if args and args[0].casefold() == "создать":
+        parsed = museum.parse_create_arguments(args[1:])
+        if parsed is None:
+            await event.reply(
+                "Формат: `музей создать 10 золота Б` или "
+                "`музей создать Б 10 золота`.\n"
+                "Размеры: Б — большая, Г — гигантская, В — великая."
+            )
+            return
+        gold, size_code = parsed
+        await store.get_or_create(chat_id, sender.id, sender_name)
+        status, roll, gold_left = await store.create_museum_statue(
+            chat_id,
+            sender.id,
+            gold,
+            size_code,
+        )
+        if status == "insufficient":
+            await event.reply(
+                f"Недостаточно золота. Доступно: {gold_left} 🪙."
+            )
+            return
+        if status != "ok" or roll is None:
+            await event.reply("Для создания нужно вложить хотя бы 1 золото.")
+            return
+        await event.reply(
+            f"🏛 Статуя создана!\n"
+            f"{roll.color} {roll.size.marker} {roll.size.name} · "
+            f"{roll.quality}\n"
+            f"Бросок: {roll.base_roll} + {roll.bonus} = {roll.score}\n"
+            f"Доход: {museum.format_points(roll.income_per_hour, signed=True)} "
+            f"очков/ч\n"
+            f"Потрачено: {gold} 🪙 · Осталось: {gold_left} 🪙"
+        )
+        return
+
+    if args:
+        await event.reply(
+            "Формат: `музей` или `музей создать 10 золота Б`."
+        )
+        return
+
+    target = sender
+    target_name = sender_name
+    if casino.is_explicit_message_reply(event.message):
+        replied = await event.get_reply_message()
+        replied_user = await replied.get_sender()
+        if not isinstance(replied_user, User) or replied_user.bot:
+            await event.reply(
+                "Ответьте командой на сообщение обычного пользователя."
+            )
+            return
+        target = replied_user
+        target_name = display_name(replied_user)
+    await store.get_or_create(chat_id, target.id, target_name)
+    snapshot = await store.get_museum(chat_id, target.id)
+    await event.reply(
+        museum.format_museum(target_name, snapshot),
+        parse_mode=None,
+    )
+
+
+async def direct_museum_command(event) -> None:
+    """Обработать пользовательский префикс «музей»."""
+    if not event.is_group:
+        return
+    sender = await event.get_sender()
+    chat = await event.get_chat()
+    if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
+        return
+    topic_id = casino.message_topic_id(event.message)
+    if not await store.is_topic_enabled(event.chat_id, topic_id):
+        return
+    command_line = (event.pattern_match.group(1) or "").strip()
+    args = command_line.split() if command_line else []
+    await handle_museum_command(
+        event,
+        sender,
+        display_name(sender),
+        args,
+    )
+
+
 async def direct_farm_command(event) -> None:
     """Обработать общий префикс «ферма» без слова «каз»."""
     if not event.is_group:
@@ -2517,6 +2646,7 @@ restore_dice_expirations = dice.register(
 )
 casino.register(client, casino_command)
 farm.register(client, direct_farm_command, store, display_name)
+museum.register(client, direct_museum_command)
 guess_sound.register(
     client,
     FreesoundProvider(FREESOUND_API_KEY),
@@ -2546,6 +2676,9 @@ async def main() -> None:
     hatching_task = asyncio.create_task(pet_hatching_loop())
     cleanup_tasks.add(hatching_task)
     hatching_task.add_done_callback(cleanup_tasks.discard)
+    museum_task = asyncio.create_task(museum_income_loop())
+    cleanup_tasks.add(museum_task)
+    museum_task.add_done_callback(cleanup_tasks.discard)
     print(
         f"Бот @{bot_username} запущен. "
         f"Администратор: {admin_id}."
