@@ -52,7 +52,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_ID = env_int("ADMIN_ID")
 SESSION_NAME = os.getenv("SESSION_NAME", "casino_bot").strip()
 INITIAL_BALANCE = env_int("INITIAL_BALANCE", 1000)
-MIN_BET = env_int("MIN_BET", 10)
+MIN_BET = env_int("MIN_BET", 1)
 FREESOUND_API_KEY = os.getenv("FREESOUND_API_KEY", "").strip()
 
 if not API_HASH:
