@@ -50,6 +50,21 @@ await capture("11-waiting-b");
 await page.reload();
 await page.locator('[data-rod-option="bamboo"]').click();
 await page.locator("#fisher").evaluate((element) => {
+  element.style.animation = "none";
+});
+for (const [index, position] of ["0", "33.333%", "66.667%", "100%"].entries()) {
+  await page.locator("#fisher").evaluate(
+    (element, backgroundPosition) => {
+      element.style.backgroundPositionX = backgroundPosition;
+    },
+    position,
+  );
+  await capture(`bamboo-idle-frame-${index + 1}`);
+}
+
+await page.reload();
+await page.locator('[data-rod-option="bamboo"]').click();
+await page.locator("#fisher").evaluate((element) => {
   element.classList.add("casting");
   element.style.animation = "none";
 });

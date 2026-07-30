@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,27 +73,40 @@ def split_sheet(state: str) -> None:
 
 
 def make_bamboo_rod(rod: Image.Image, state: str) -> Image.Image:
-    """Перекрасить удилище и добавить поперечные бамбуковые узлы."""
+    """Перенести генеративный дизайн бамбука на исходную траекторию."""
     palette = (
-        (36, (35, 48, 25)),
-        (64, (54, 72, 31)),
-        (92, (78, 96, 39)),
-        (122, (112, 127, 49)),
-        (154, (151, 159, 66)),
-        (190, (190, 190, 91)),
-        (256, (220, 211, 122)),
+        (36, (48, 48, 10)),
+        (64, (74, 72, 12)),
+        (92, (108, 103, 14)),
+        (122, (148, 136, 20)),
+        (154, (190, 169, 31)),
+        (190, (230, 202, 55)),
+        (256, (255, 231, 108)),
     )
     bamboo = Image.new("RGBA", rod.size)
     source_pixels = rod.load()
     bamboo_pixels = bamboo.load()
+    source_alpha = rod.getchannel("A")
+    # Бамбуковый стебель немного толще деревянного удилища, но центр и
+    # точки крепления остаются на исходной траектории.
+    bamboo_alpha = source_alpha.filter(ImageFilter.MaxFilter(3))
+    bamboo_alpha_pixels = bamboo_alpha.load()
 
     for y in range(rod.height):
         for x in range(rod.width):
-            red, green, blue, alpha = source_pixels[x, y]
+            alpha = bamboo_alpha_pixels[x, y]
             if not alpha:
                 continue
-            luminance = (red * 299 + green * 587 + blue * 114) // 1000
-            color = next(color for limit, color in palette if luminance < limit)
+            red, green, blue, source_pixel_alpha = source_pixels[x, y]
+            if source_pixel_alpha:
+                luminance = (
+                    red * 299 + green * 587 + blue * 114
+                ) // 1000
+                color = next(
+                    color for limit, color in palette if luminance < limit
+                )
+            else:
+                color = (45, 45, 9)
             bamboo_pixels[x, y] = (*color, alpha)
 
     node_mask = Image.new("L", rod.size)
@@ -105,10 +118,10 @@ def make_bamboo_rod(rod: Image.Image, state: str) -> Image.Image:
         perpendicular_x = -dy / length
         perpendicular_y = dx / length
         offset = frame_index * FRAME_WIDTH
-        for position in (0.28, 0.56, 0.82):
+        for position in (0.24, 0.48, 0.72):
             center_x = tip[0] + dx * position + offset
             center_y = tip[1] + dy * position
-            radius = 8
+            radius = 10
             node_draw.line(
                 (
                     (
@@ -121,16 +134,23 @@ def make_bamboo_rod(rod: Image.Image, state: str) -> Image.Image:
                     ),
                 ),
                 fill=255,
-                width=3,
+                width=5,
             )
 
-    nodes = ImageChops.multiply(node_mask, bamboo.getchannel("A"))
+    # Коленца слегка выступают за основной стебель, как в сгенерированном
+    # дизайн-референсе, но не меняют его ось.
+    bamboo_alpha = ImageChops.lighter(
+        bamboo.getchannel("A"),
+        node_mask,
+    )
+    bamboo.putalpha(bamboo_alpha)
+    nodes = ImageChops.multiply(node_mask, bamboo_alpha)
     node_pixels = nodes.load()
     for y in range(bamboo.height):
         for x in range(bamboo.width):
             if node_pixels[x, y]:
                 alpha = bamboo_pixels[x, y][3]
-                bamboo_pixels[x, y] = (48, 63, 27, alpha)
+                bamboo_pixels[x, y] = (67, 77, 14, alpha)
     return bamboo
 
 
