@@ -13,6 +13,13 @@ from games.museum_storage import (
 
 
 class MuseumRulesTests(unittest.TestCase):
+    def test_help_contains_core_rules_and_example(self) -> None:
+        text = museum.help_text()
+        self.assertIn("ровно две 7️⃣", text)
+        self.assertIn("Ужасное: ×−2", text)
+        self.assertIn("9 000 × 2 = 18 000 очков/ч", text)
+        self.assertIn("музей создать 10з Б", text)
+
     def test_all_in_gold_except_exactly_two_sevens(self) -> None:
         self.assertEqual(
             museum.all_in_gold_reward(250_000, ("BAR", "🍒", "🍋")),

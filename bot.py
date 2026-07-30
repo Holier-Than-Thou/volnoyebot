@@ -2534,6 +2534,10 @@ async def handle_museum_command(
 ) -> None:
     """Показать музей либо создать статую за золото."""
     chat_id = event.chat_id
+    if len(args) == 1 and args[0].casefold() in {"помощь", "help"}:
+        await event.reply(museum.help_text(), parse_mode=None)
+        return
+
     if args and args[0].casefold() == "создать":
         parsed = museum.parse_create_arguments(args[1:])
         if parsed is None:
@@ -2572,7 +2576,8 @@ async def handle_museum_command(
 
     if args:
         await event.reply(
-            "Формат: `музей` или `музей создать 10 золота Б`."
+            "Формат: `музей`, `музей помощь` или "
+            "`музей создать 10 золота Б`."
         )
         return
 
