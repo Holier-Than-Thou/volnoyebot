@@ -25,8 +25,6 @@ SIZES = {
 }
 
 QUALITY_RULES = (
-    (40, "Ужасное", "🟥", -2),
-    (70, "Плохое", "🟧", -1),
     (85, "Нормальное", "⬜", 1),
     (94, "Хорошее", "🟩", 2),
     (99, "Отличное", "🟦", 5),
@@ -47,14 +45,19 @@ def all_in_gold_reward(
 @dataclass(frozen=True)
 class StatueRoll:
     size: StatueSize
-    quality: str
-    color: str
+    quality: str | None
+    color: str | None
     quality_multiplier: int
     gold_spent: int
     base_roll: int
     bonus: int
     score: int
-    income_per_hour: int
+    income_per_day: int
+
+    @property
+    def is_broken(self) -> bool:
+        """Заготовка сломалась, если бросок не достиг нормального качества."""
+        return self.quality is None
 
 
 def normalize_size_code(value: str) -> str | None:
@@ -63,8 +66,10 @@ def normalize_size_code(value: str) -> str | None:
     return code if code in SIZES else None
 
 
-def quality_for_score(score: int) -> tuple[str, str, int]:
-    """Определить качество, цвет и множитель дохода."""
+def quality_for_score(score: int) -> tuple[str, str, int] | None:
+    """Определить качество либо вернуть None для сломанной заготовки."""
+    if score < 71:
+        return None
     for upper_bound, name, color, multiplier in QUALITY_RULES:
         if upper_bound is None or score <= upper_bound:
             return name, color, multiplier
@@ -92,7 +97,13 @@ def create_statue_roll(
         // size.gold_multiplier_denominator
     )
     score = base_roll + bonus
-    quality, color, quality_multiplier = quality_for_score(score)
+    quality_result = quality_for_score(score)
+    if quality_result is None:
+        quality = None
+        color = None
+        quality_multiplier = 0
+    else:
+        quality, color, quality_multiplier = quality_result
     return StatueRoll(
         size=size,
         quality=quality,
@@ -102,7 +113,7 @@ def create_statue_roll(
         base_roll=base_roll,
         bonus=bonus,
         score=score,
-        income_per_hour=size.base_income * quality_multiplier,
+        income_per_day=size.base_income * quality_multiplier,
     )
 
 
@@ -156,17 +167,11 @@ def format_museum(owner_name: str, snapshot: dict) -> str:
     """Подготовить компактную экспозицию и легенду маркеров."""
     lines = [
         f"🏛 Музей: {owner_name}",
-        f"🪙 Золото: {format_points(snapshot['gold'])}",
+        f"🥇 Золото: {format_points(snapshot['gold'])}",
         f"Статуй: {len(snapshot['statues'])}",
         "Доход: "
-        f"{format_points(snapshot['hourly_income'], signed=True)} очков/ч",
+        f"{format_points(snapshot['daily_income'], signed=True)} очков/сутки",
     ]
-    if snapshot["raw_hourly_income"] < 0:
-        lines.append(
-            "Сумма экспозиции: "
-            f"{format_points(snapshot['raw_hourly_income'], signed=True)} "
-            "очков/ч; правило нуля временно блокирует доход."
-        )
     if not snapshot["statues"]:
         lines.append("\nЭкспозиция пока пуста.")
     else:
@@ -176,14 +181,14 @@ def format_museum(owner_name: str, snapshot: dict) -> str:
             lines.append(
                 f"{index}. {statue['color']} {size.marker} {size.name} · "
                 f"{statue['quality']} · "
-                f"{format_points(statue['income_per_hour'], signed=True)}/ч"
+                f"{format_points(statue['income_per_day'], signed=True)}/сутки"
             )
     lines.extend(
         (
             "",
             "Размер: 📍 Большая · 📌 Гигантская · 🗿 Великая",
-            "Качество: 🟥 ужасное · 🟧 плохое · ⬜ нормальное · "
-            "🟩 хорошее · 🟦 отличное · 🟨 шедевр",
+            "Качество: ⬜ нормальное · 🟩 хорошее · "
+            "🟦 отличное · 🟨 шедевр",
         )
     )
     return "\n".join(lines)
@@ -206,13 +211,12 @@ def help_text() -> str:
   Вы выбираете размер и количество золота. Всё указанное золото списывается.
   Бросок = случайное число 1–100 + бонус вложенного золота.
 
-  📍 Б — Большая: базовый доход 9 000/ч, бонус (золото − 1) × 2.
-  📌 Г — Гигантская: базовый доход 30 000/ч, бонус (золото − 1).
-  🗿 В — Великая: базовый доход 75 000/ч, бонус (золото − 1) // 2.
+  📍 Б — Большая: базовый доход 9 000/сутки, бонус (золото − 1) × 2.
+  📌 Г — Гигантская: базовый доход 30 000/сутки, бонус (золото − 1).
+  🗿 В — Великая: базовый доход 75 000/сутки, бонус (золото − 1) // 2.
 
 Качество и множитель дохода
-  🟥 1–40 — Ужасное: ×−2
-  🟧 41–70 — Плохое: ×−1
+  1–70 — заготовка ломается, статуя не появляется.
   ⬜️ 71–85 — Нормальное: ×1
   🟩 86–94 — Хорошее: ×2
   🟦 95–99 — Отличное: ×5
@@ -221,12 +225,10 @@ def help_text() -> str:
 Пример
   Большая статуя за 10 🥇 получила базовый бросок 70.
   Бонус: (10 − 1) × 2 = 18. Итог: 70 + 18 = 88.
-  Это 🟩 Хорошее качество: 9 000 × 2 = 18 000 очков/ч.
+  Это 🟩 Хорошее качество: 9 000 × 2 = 18 000 очков/сутки.
 
 Доход музея
-  Доходы всех статуй складываются и начисляются за каждый завершённый час.
-  Плохие статуи уменьшают общий доход. Если итог меньше нуля, начисляется 0,
-  пока положительные статуи не перекроют отрицательную сумму.
+  Доходы всех статуй складываются и начисляются за каждые завершённые сутки.
   Статуи нельзя удалить вручную.
 
 Команды

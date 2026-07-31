@@ -1,4 +1,4 @@
-"""SQLite-хранилище золота, статуй и почасового дохода музея."""
+"""SQLite-хранилище золота, статуй и суточного дохода музея."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import time
 from . import museum
 
 
-MUSEUM_INCOME_INTERVAL_SECONDS = 60 * 60
+MUSEUM_INCOME_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 def initialize_museum_schema(connection: sqlite3.Connection) -> None:
@@ -36,11 +36,28 @@ def initialize_museum_schema(connection: sqlite3.Connection) -> None:
             base_roll INTEGER NOT NULL,
             bonus INTEGER NOT NULL,
             score INTEGER NOT NULL,
-            income_per_hour INTEGER NOT NULL,
+            income_per_day INTEGER NOT NULL,
             created_at REAL NOT NULL
         )
         """
     )
+    statue_columns = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(museum_statues)")
+    }
+    if "income_per_day" not in statue_columns:
+        connection.execute(
+            "ALTER TABLE museum_statues ADD COLUMN income_per_day INTEGER"
+        )
+        # Числовые базовые доходы сохраняются, но теперь относятся к суткам.
+        # Старый столбец оставляем для обратимости миграции.
+        connection.execute(
+            """
+            UPDATE museum_statues
+            SET income_per_day = income_per_hour
+            WHERE income_per_day IS NULL
+            """
+        )
     connection.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_museum_statues_owner
@@ -69,7 +86,7 @@ class MuseumStoreMixin:
             (chat_id, user_id, now),
         )
 
-    def _museum_hourly_income_unlocked(
+    def _museum_daily_income_unlocked(
         self,
         chat_id: int,
         user_id: int,
@@ -77,9 +94,9 @@ class MuseumStoreMixin:
         raw_income = int(
             self.connection.execute(
                 """
-                SELECT COALESCE(SUM(income_per_hour), 0)
+                SELECT COALESCE(SUM(income_per_day), 0)
                 FROM museum_statues
-                WHERE chat_id = ? AND user_id = ?
+                WHERE chat_id = ? AND user_id = ? AND score >= 71
                 """,
                 (chat_id, user_id),
             ).fetchone()[0]
@@ -101,17 +118,17 @@ class MuseumStoreMixin:
             """,
             (chat_id, user_id),
         ).fetchone()
-        elapsed_hours = int(
+        elapsed_days = int(
             (now - float(account["income_updated_at"]))
             // MUSEUM_INCOME_INTERVAL_SECONDS
         )
-        if elapsed_hours <= 0:
+        if elapsed_days <= 0:
             return 0
-        _raw_income, hourly_income = self._museum_hourly_income_unlocked(
+        daily_income = self._museum_daily_income_unlocked(
             chat_id,
             user_id,
-        )
-        payout = hourly_income * elapsed_hours
+        )[1]
+        payout = daily_income * elapsed_days
         if payout:
             self.connection.execute(
                 """
@@ -128,7 +145,7 @@ class MuseumStoreMixin:
             WHERE chat_id = ? AND user_id = ?
             """,
             (
-                elapsed_hours * MUSEUM_INCOME_INTERVAL_SECONDS,
+                elapsed_days * MUSEUM_INCOME_INTERVAL_SECONDS,
                 chat_id,
                 user_id,
             ),
@@ -190,7 +207,7 @@ class MuseumStoreMixin:
         gold: int,
         size_code: str,
     ) -> tuple[str, museum.StatueRoll | None, int]:
-        """Потратить золото и навсегда добавить статую."""
+        """Потратить золото и добавить статую, если заготовка не сломалась."""
         async with self.lock:
             now = time.time()
             self._accrue_museum_unlocked(chat_id, user_id, now)
@@ -216,12 +233,15 @@ class MuseumStoreMixin:
                 """,
                 (gold, chat_id, user_id),
             )
+            if roll.is_broken:
+                self.connection.commit()
+                return "broken", roll, available_gold - gold
             self.connection.execute(
                 """
                 INSERT INTO museum_statues(
                     chat_id, user_id, size_code, quality, color,
                     gold_spent, base_roll, bonus, score,
-                    income_per_hour, created_at
+                    income_per_day, created_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -235,7 +255,7 @@ class MuseumStoreMixin:
                     roll.base_roll,
                     roll.bonus,
                     roll.score,
-                    roll.income_per_hour,
+                    roll.income_per_day,
                     now,
                 ),
             )
@@ -247,7 +267,7 @@ class MuseumStoreMixin:
         chat_id: int,
         user_id: int,
     ) -> dict:
-        """Начислить завершённые часы и вернуть экспозицию."""
+        """Начислить завершённые сутки и вернуть экспозицию."""
         async with self.lock:
             now = time.time()
             payout = self._accrue_museum_unlocked(chat_id, user_id, now)
@@ -261,12 +281,12 @@ class MuseumStoreMixin:
             rows = self.connection.execute(
                 """
                 SELECT * FROM museum_statues
-                WHERE chat_id = ? AND user_id = ?
+                WHERE chat_id = ? AND user_id = ? AND score >= 71
                 ORDER BY id
                 """,
                 (chat_id, user_id),
             ).fetchall()
-            raw_income, hourly_income = self._museum_hourly_income_unlocked(
+            raw_income, daily_income = self._museum_daily_income_unlocked(
                 chat_id,
                 user_id,
             )
@@ -274,13 +294,13 @@ class MuseumStoreMixin:
             return {
                 "gold": int(account["gold"]),
                 "statues": [dict(row) for row in rows],
-                "raw_hourly_income": raw_income,
-                "hourly_income": hourly_income,
+                "raw_daily_income": raw_income,
+                "daily_income": daily_income,
                 "accrued_payout": payout,
             }
 
     async def accrue_all_museum_income(self) -> tuple[int, int]:
-        """Начислить завершённые часы всем владельцам музеев."""
+        """Начислить завершённые сутки всем владельцам музеев."""
         async with self.lock:
             now = time.time()
             accounts = self.connection.execute(

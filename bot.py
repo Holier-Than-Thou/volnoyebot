@@ -1833,7 +1833,7 @@ async def pet_hatching_loop() -> None:
 
 
 async def museum_income_loop() -> None:
-    """Раз в минуту начислять все завершённые часы дохода музеев."""
+    """Раз в минуту начислять все завершённые сутки дохода музеев."""
     while True:
         await store.accrue_all_museum_income()
         await asyncio.sleep(MUSEUM_INCOME_CHECK_INTERVAL_SECONDS)
@@ -2442,7 +2442,7 @@ async def casino_command(event) -> None:
         # Значение известно сразу, но ответ ждёт окончания анимации клиента.
         await asyncio.sleep(casino.SLOT_ANIMATION_SECONDS)
         gold_text = (
-            f"\n🪙 Получено золота: {gold_reward}. "
+            f"\n🥇 Получено золота: {gold_reward}. "
             f"Всего: {gold_balance}."
             if gold_reward
             else ""
@@ -2561,7 +2561,14 @@ async def handle_museum_command(
         )
         if status == "insufficient":
             await event.reply(
-                f"Недостаточно золота. Доступно: {gold_left} 🪙."
+                f"Недостаточно золота. Доступно: {gold_left} 🥇."
+            )
+            return
+        if status == "broken" and roll is not None:
+            await event.reply(
+                "💥 Заготовка сломалась — статуя не создана.\n"
+                f"Бросок: {roll.base_roll} + {roll.bonus} = {roll.score}\n"
+                f"Потрачено: {gold} 🥇 · Осталось: {gold_left} 🥇"
             )
             return
         if status != "ok" or roll is None:
@@ -2572,9 +2579,9 @@ async def handle_museum_command(
             f"{roll.color} {roll.size.marker} {roll.size.name} · "
             f"{roll.quality}\n"
             f"Бросок: {roll.base_roll} + {roll.bonus} = {roll.score}\n"
-            f"Доход: {museum.format_points(roll.income_per_hour, signed=True)} "
-            f"очков/ч\n"
-            f"Потрачено: {gold} 🪙 · Осталось: {gold_left} 🪙"
+            f"Доход: {museum.format_points(roll.income_per_day, signed=True)} "
+            f"очков/сутки\n"
+            f"Потрачено: {gold} 🥇 · Осталось: {gold_left} 🥇"
         )
         return
 
