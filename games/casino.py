@@ -74,6 +74,14 @@ def is_explicit_message_reply(message) -> bool:
     )
 
 
+def is_forwarded_message(message) -> bool:
+    """Распознать сообщение, которое Telegram пометил как пересланное."""
+    return (
+        getattr(message, "fwd_from", None) is not None
+        or getattr(message, "forward", None) is not None
+    )
+
+
 def help_text(min_bet: int) -> str:
     return f"""🎰 Казино «Три топора»
 
@@ -129,6 +137,7 @@ def help_text(min_bet: int) -> str:
 Ответом на сообщение — отдельная аналитика игрока по казино и костям.
 Ровно две 🍒 дают яйцо для фермы при наличии свободного слота.
 Администратор: каз зп — немедленно начислить всем по 1 000 очков.
+Администратор: каз выдать Х з (ответом) — выдать игроку золото.
 
 Пример обмена: каз деп тачка"""
 

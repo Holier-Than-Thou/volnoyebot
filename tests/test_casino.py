@@ -7,6 +7,23 @@ from games import casino
 
 
 class CasinoRulesTest(unittest.TestCase):
+    def test_forwarded_messages_are_detected_from_telegram_metadata(self) -> None:
+        self.assertTrue(
+            casino.is_forwarded_message(
+                SimpleNamespace(fwd_from=object(), forward=None)
+            )
+        )
+        self.assertTrue(
+            casino.is_forwarded_message(
+                SimpleNamespace(fwd_from=None, forward=object())
+            )
+        )
+        self.assertFalse(
+            casino.is_forwarded_message(
+                SimpleNamespace(fwd_from=None, forward=None)
+            )
+        )
+
     def test_decode_slot_boundaries(self) -> None:
         self.assertEqual(casino.decode_slot(1), ("BAR", "BAR", "BAR"))
         self.assertEqual(casino.decode_slot(64), ("7️⃣", "7️⃣", "7️⃣"))

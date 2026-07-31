@@ -1952,6 +1952,8 @@ async def activation_gate(event) -> None:
     """Не пропускать события чата до явной активации администратором."""
     if not event.is_group:
         raise events.StopPropagation
+    if casino.is_forwarded_message(event.message):
+        raise events.StopPropagation
 
     sender = await event.get_sender()
     if (
@@ -2491,6 +2493,38 @@ async def casino_command(event) -> None:
                 f"✅ Начальный баланс автоматически выдаётся при первом "
                 f"обращении пользователя. Уже известных пользователей: {count}."
             )
+        return
+
+    gold_grant = (
+        command == "выдать"
+        and bool(args)
+        and args[-1].casefold() in {"з", "золото", "золота"}
+    )
+    if gold_grant:
+        try:
+            target = await target_from_command(event, args[:-1])
+        except (ValueError, TypeError):
+            target = None
+        if target is None:
+            await event.reply(
+                "Ответьте на сообщение командой `каз выдать 2 з` "
+                "или укажите `каз выдать USER_ID 2 з`."
+            )
+            return
+        user, amount = target
+        if amount <= 0:
+            await event.reply("Укажите положительное количество золота.")
+            return
+        gold_balance = await store.award_museum_gold(
+            chat_id,
+            user.id,
+            amount,
+        )
+        grant_message = await event.reply(
+            f"✅ {display_name(user)}: выдано {amount} 🥇. "
+            f"Всего: {gold_balance} 🥇."
+        )
+        schedule_delete(chat, grant_message)
         return
 
     if command in {"выдать", "установить"}:
