@@ -125,6 +125,33 @@ class MuseumStorageTests(unittest.IsolatedAsyncioTestCase):
         ).fetchone()[0]
         self.assertEqual(count, 0)
 
+    async def test_insert_error_rolls_back_spent_gold(self) -> None:
+        await self.store.award_museum_gold(1, 10, 7)
+        self.store.connection.execute(
+            """
+            CREATE TRIGGER fail_museum_insert
+            BEFORE INSERT ON museum_statues
+            BEGIN
+                SELECT RAISE(ABORT, 'forced museum insert failure');
+            END
+            """
+        )
+        self.store.connection.commit()
+        with patch("games.museum.random.randint", return_value=100):
+            with self.assertRaises(sqlite3.IntegrityError):
+                await self.store.create_museum_statue(1, 10, 5, "Б")
+        gold = self.store.connection.execute(
+            """
+            SELECT gold FROM museum_accounts
+            WHERE chat_id = 1 AND user_id = 10
+            """
+        ).fetchone()["gold"]
+        statue_count = self.store.connection.execute(
+            "SELECT COUNT(*) FROM museum_statues"
+        ).fetchone()[0]
+        self.assertEqual(gold, 7)
+        self.assertEqual(statue_count, 0)
+
     async def test_completed_day_is_added_to_balance(self) -> None:
         await self.store.award_museum_gold(1, 10, 100)
         status, _roll, _gold = await self.store.create_museum_statue(
@@ -178,7 +205,7 @@ class MuseumStorageTests(unittest.IsolatedAsyncioTestCase):
         ).fetchone()["balance"]
         self.assertEqual(balance, 1000)
 
-    def test_legacy_hourly_column_is_migrated_without_deleting_rows(self) -> None:
+    def test_legacy_hourly_column_is_replaced_without_deleting_rows(self) -> None:
         connection = sqlite3.connect(":memory:")
         connection.execute(
             """
@@ -209,9 +236,15 @@ class MuseumStorageTests(unittest.IsolatedAsyncioTestCase):
         )
         initialize_museum_schema(connection)
         row = connection.execute(
-            "SELECT income_per_hour, income_per_day FROM museum_statues"
+            "SELECT income_per_day FROM museum_statues"
         ).fetchone()
-        self.assertEqual(row, (9_000, 9_000))
+        columns = {
+            item[1]
+            for item in connection.execute("PRAGMA table_info(museum_statues)")
+        }
+        self.assertEqual(row, (9_000,))
+        self.assertIn("income_per_day", columns)
+        self.assertNotIn("income_per_hour", columns)
         connection.close()
 
 

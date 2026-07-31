@@ -11,21 +11,16 @@ from . import museum
 MUSEUM_INCOME_INTERVAL_SECONDS = 24 * 60 * 60
 
 
-def initialize_museum_schema(connection: sqlite3.Connection) -> None:
+def _create_museum_statues_table(
+    connection: sqlite3.Connection,
+    table_name: str,
+) -> None:
+    """Создать таблицу статуй в актуальной суточной схеме."""
+    if table_name not in {"museum_statues", "museum_statues_v2"}:
+        raise ValueError("Некорректное внутреннее имя таблицы статуй")
     connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS museum_accounts (
-            chat_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            gold INTEGER NOT NULL DEFAULT 0 CHECK (gold >= 0),
-            income_updated_at REAL NOT NULL,
-            PRIMARY KEY (chat_id, user_id)
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS museum_statues (
+        f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
@@ -41,23 +36,57 @@ def initialize_museum_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+
+
+def initialize_museum_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS museum_accounts (
+            chat_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            gold INTEGER NOT NULL DEFAULT 0 CHECK (gold >= 0),
+            income_updated_at REAL NOT NULL,
+            PRIMARY KEY (chat_id, user_id)
+        )
+        """
+    )
+    _create_museum_statues_table(connection, "museum_statues")
     statue_columns = {
         row[1]
         for row in connection.execute("PRAGMA table_info(museum_statues)")
     }
-    if "income_per_day" not in statue_columns:
-        connection.execute(
-            "ALTER TABLE museum_statues ADD COLUMN income_per_day INTEGER"
+    if "income_per_hour" in statue_columns:
+        income_expression = (
+            "COALESCE(income_per_day, income_per_hour)"
+            if "income_per_day" in statue_columns
+            else "income_per_hour"
         )
-        # Числовые базовые доходы сохраняются, но теперь относятся к суткам.
-        # Старый столбец оставляем для обратимости миграции.
-        connection.execute(
-            """
-            UPDATE museum_statues
-            SET income_per_day = income_per_hour
-            WHERE income_per_day IS NULL
-            """
-        )
+        connection.execute("SAVEPOINT migrate_museum_statues_daily")
+        try:
+            connection.execute("DROP TABLE IF EXISTS museum_statues_v2")
+            _create_museum_statues_table(connection, "museum_statues_v2")
+            connection.execute(
+                f"""
+                INSERT INTO museum_statues_v2(
+                    id, chat_id, user_id, size_code, quality, color,
+                    gold_spent, base_roll, bonus, score,
+                    income_per_day, created_at
+                )
+                SELECT id, chat_id, user_id, size_code, quality, color,
+                       gold_spent, base_roll, bonus, score,
+                       {income_expression}, created_at
+                FROM museum_statues
+                """
+            )
+            connection.execute("DROP TABLE museum_statues")
+            connection.execute(
+                "ALTER TABLE museum_statues_v2 RENAME TO museum_statues"
+            )
+            connection.execute("RELEASE migrate_museum_statues_daily")
+        except Exception:
+            connection.execute("ROLLBACK TO migrate_museum_statues_daily")
+            connection.execute("RELEASE migrate_museum_statues_daily")
+            raise
     connection.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_museum_statues_owner
@@ -209,58 +238,62 @@ class MuseumStoreMixin:
     ) -> tuple[str, museum.StatueRoll | None, int]:
         """Потратить золото и добавить статую, если заготовка не сломалась."""
         async with self.lock:
-            now = time.time()
-            self._accrue_museum_unlocked(chat_id, user_id, now)
-            account = self.connection.execute(
-                """
-                SELECT gold FROM museum_accounts
-                WHERE chat_id = ? AND user_id = ?
-                """,
-                (chat_id, user_id),
-            ).fetchone()
-            available_gold = int(account["gold"])
-            if gold < 1:
-                self.connection.commit()
-                return "invalid", None, available_gold
-            if available_gold < gold:
-                self.connection.commit()
-                return "insufficient", None, available_gold
-            roll = museum.create_statue_roll(size_code, gold)
-            self.connection.execute(
-                """
-                UPDATE museum_accounts SET gold = gold - ?
-                WHERE chat_id = ? AND user_id = ?
-                """,
-                (gold, chat_id, user_id),
-            )
-            if roll.is_broken:
-                self.connection.commit()
-                return "broken", roll, available_gold - gold
-            self.connection.execute(
-                """
-                INSERT INTO museum_statues(
-                    chat_id, user_id, size_code, quality, color,
-                    gold_spent, base_roll, bonus, score,
-                    income_per_day, created_at
+            try:
+                now = time.time()
+                self._accrue_museum_unlocked(chat_id, user_id, now)
+                account = self.connection.execute(
+                    """
+                    SELECT gold FROM museum_accounts
+                    WHERE chat_id = ? AND user_id = ?
+                    """,
+                    (chat_id, user_id),
+                ).fetchone()
+                available_gold = int(account["gold"])
+                if gold < 1:
+                    self.connection.commit()
+                    return "invalid", None, available_gold
+                if available_gold < gold:
+                    self.connection.commit()
+                    return "insufficient", None, available_gold
+                roll = museum.create_statue_roll(size_code, gold)
+                self.connection.execute(
+                    """
+                    UPDATE museum_accounts SET gold = gold - ?
+                    WHERE chat_id = ? AND user_id = ?
+                    """,
+                    (gold, chat_id, user_id),
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    chat_id,
-                    user_id,
-                    roll.size.code,
-                    roll.quality,
-                    roll.color,
-                    roll.gold_spent,
-                    roll.base_roll,
-                    roll.bonus,
-                    roll.score,
-                    roll.income_per_day,
-                    now,
-                ),
-            )
-            self.connection.commit()
-            return "ok", roll, available_gold - gold
+                if roll.is_broken:
+                    self.connection.commit()
+                    return "broken", roll, available_gold - gold
+                self.connection.execute(
+                    """
+                    INSERT INTO museum_statues(
+                        chat_id, user_id, size_code, quality, color,
+                        gold_spent, base_roll, bonus, score,
+                        income_per_day, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        chat_id,
+                        user_id,
+                        roll.size.code,
+                        roll.quality,
+                        roll.color,
+                        roll.gold_spent,
+                        roll.base_roll,
+                        roll.bonus,
+                        roll.score,
+                        roll.income_per_day,
+                        now,
+                    ),
+                )
+                self.connection.commit()
+                return "ok", roll, available_gold - gold
+            except Exception:
+                self.connection.rollback()
+                raise
 
     async def get_museum(
         self,
