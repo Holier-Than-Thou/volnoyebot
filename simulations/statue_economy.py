@@ -26,7 +26,7 @@ SECONDS_PER_DAY = 86_400
 @dataclass(frozen=True)
 class StatueSize:
     name: str
-    base_income_per_hour: int
+    base_income_per_day: int
     gold_multiplier: float
     minimum_gold: int
     masterpiece_gold: int
@@ -54,8 +54,9 @@ class Player:
     balance: int
     gold: int
     farm_income_per_day: int
-    museum_income_per_hour: int = 0
+    museum_income_per_day: int = 0
     statues: int = 0
+    broken_statues: int = 0
     total_casino_turnover: int = 0
     total_gold_earned: int = 0
     largest_bet: int = 0
@@ -139,8 +140,11 @@ def maybe_build_statue(
     bonus = math.floor((gold_spent - 1) * size.gold_multiplier)
     score = rng.randint(1, 100) + bonus
     quality = quality_for_score(score)
-    player.museum_income_per_hour += (
-        size.base_income_per_hour * QUALITY_MULTIPLIERS[quality]
+    if quality in {"Ужасное", "Плохое"}:
+        player.broken_statues += 1
+        return
+    player.museum_income_per_day += (
+        size.base_income_per_day * QUALITY_MULTIPLIERS[quality]
     )
     player.statues += 1
 
@@ -162,7 +166,7 @@ def simulate_cohort(
     total_bets = 0
     for _day in range(DAYS):
         for player in players:
-            museum_daily_income = max(0, player.museum_income_per_hour) * 24
+            museum_daily_income = player.museum_income_per_day
             player.balance += (
                 SALARY_PER_DAY
                 + player.farm_income_per_day
@@ -188,9 +192,9 @@ def player_metrics(player: Player) -> dict[str, int]:
     return {
         "balance": player.balance,
         "farm_per_day": player.farm_income_per_day,
-        "museum_per_hour": max(0, player.museum_income_per_hour),
-        "museum_raw_per_hour": player.museum_income_per_hour,
+        "museum_per_day": player.museum_income_per_day,
         "statues": player.statues,
+        "broken_statues": player.broken_statues,
         "gold": player.gold,
         "gold_earned": player.total_gold_earned,
         "turnover": player.total_casino_turnover,
@@ -217,7 +221,7 @@ def summarize(players: list[Player]) -> dict[str, dict[str, float]]:
 def find_outliers(players: list[Player]) -> list[dict[str, int]]:
     """Найти верхние выбросы по доходу музея, золоту или обороту."""
     rows = [player_metrics(player) for player in players]
-    keys = ("museum_per_hour", "gold", "turnover")
+    keys = ("museum_per_day", "gold", "turnover")
     limits: dict[str, float] = {}
     for key in keys:
         values = [row[key] for row in rows]
