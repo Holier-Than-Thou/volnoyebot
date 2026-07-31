@@ -1,0 +1,8 @@
+[Unit]
+Description=Issue the initial Volnoyebot HTTPS certificate
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/volnoyebot/deploy/enable-https.sh

@@ -1,0 +1,12 @@
+[Unit]
+Description=Retry initial Volnoyebot HTTPS certificate issuance
+
+[Timer]
+# Four-hour spacing avoids hammering the CA while the shared fvds.ru
+# registered-domain quota is exhausted. The next slot after setup is 11:00 UTC.
+OnCalendar=*-*-* 03/4:00:00 UTC
+Persistent=true
+Unit=volnoyebot-enable-https.service
+
+[Install]
+WantedBy=timers.target

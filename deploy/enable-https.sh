@@ -24,3 +24,10 @@ install -o root -g root -m 0755 \
 
 nginx -t
 systemctl reload nginx
+
+# После первого успешного выпуска повторные попытки больше не нужны.
+# Дальнейшее продление выполняет штатный certbot.timer.
+if systemctl list-unit-files volnoyebot-enable-https.timer \
+  --no-legend 2>/dev/null | grep -q '^volnoyebot-enable-https.timer'; then
+  systemctl disable --now volnoyebot-enable-https.timer
+fi
