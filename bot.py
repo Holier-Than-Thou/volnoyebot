@@ -2146,7 +2146,7 @@ async def casino_command(event) -> None:
         )
         await event.reply(
             f"💰 {target_name}: {balance} очков\n"
-            f"🪙 Золото: {gold}\n"
+            f"🥇 Золото: {gold}\n"
             f"Ресурсы: {asset_icons or 'нет'}"
         )
         return
