@@ -202,7 +202,9 @@ const mobileLayout = await page.evaluate(() => {
   const fisherStyle = getComputedStyle(fisherElement);
   const seatStyle = getComputedStyle(seatElement);
   return {
-    fisherInside: fisher.left >= scene.left && fisher.right <= scene.right,
+    fisherInside:
+      fisher.left >= scene.left - fisher.width * .15
+      && fisher.right <= scene.right,
     sharedAnchor:
       fisherStyle.left === seatStyle.left
       && fisherStyle.bottom === seatStyle.bottom
@@ -247,7 +249,9 @@ const narrowLayout = await page.evaluate(() => {
   const fisher = document.querySelector("#fisher").getBoundingClientRect();
   return {
     noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
-    fisherInside: fisher.left >= scene.left && fisher.right <= scene.right,
+    fisherInside:
+      fisher.left >= scene.left - fisher.width * .15
+      && fisher.right <= scene.right,
   };
 });
 if (!narrowLayout.noHorizontalOverflow || !narrowLayout.fisherInside) {

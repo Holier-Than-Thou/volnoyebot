@@ -670,7 +670,8 @@ footer span {
 .lake-scene {
   background:
     linear-gradient(rgba(18, 57, 62, .03), rgba(18, 57, 62, .03)),
-    url("/assets/fishing/lake-background.png") left center / cover no-repeat;
+    url("/assets/fishing/lake-background.png")
+      var(--background-left, 0) center / cover no-repeat;
   image-rendering: pixelated;
 }
 

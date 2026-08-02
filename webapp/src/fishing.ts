@@ -266,13 +266,25 @@ function updateSceneLayout(): void {
   const offsetY = (height - renderedHeight) / 2;
   const visibleArtworkWidth = width / scale;
   const compact = width / height < 1;
+  const availableHorizontalCrop = Math.max(
+    0,
+    sceneArtwork.width - visibleArtworkWidth,
+  );
+  const cropSourceX = compact
+    ? Math.min(120, availableHorizontalCrop)
+    : 0;
+  const offsetX = -cropSourceX * scale;
   const bobberX = compact
-    ? Math.min(sceneArtwork.bobberX, visibleArtworkWidth * 0.78)
+    ? Math.min(
+        sceneArtwork.bobberX,
+        cropSourceX + visibleArtworkWidth * 0.8,
+      )
     : sceneArtwork.bobberX;
 
+  scene.style.setProperty("--background-left", `${offsetX}px`);
   scene.style.setProperty(
     "--fisher-left",
-    `${sceneArtwork.fisherAnchorX * scale}px`,
+    `${offsetX + sceneArtwork.fisherAnchorX * scale}px`,
   );
   scene.style.setProperty(
     "--fisher-bottom",
@@ -282,7 +294,10 @@ function updateSceneLayout(): void {
     "--fisher-width",
     `${sceneArtwork.fisherWidth * scale}px`,
   );
-  scene.style.setProperty("--bobber-left", `${bobberX * scale}px`);
+  scene.style.setProperty(
+    "--bobber-left",
+    `${offsetX + bobberX * scale}px`,
+  );
   scene.style.setProperty(
     "--bobber-top",
     `${offsetY + sceneArtwork.bobberY * scale}px`,
