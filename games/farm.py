@@ -386,10 +386,6 @@ async def award_slot_egg(event, store, chat_id: int, user_id: int) -> None:
     """Выдать награду за комбинацию ровно с двумя вишнями."""
     status, _spec, egg = await store.award_pet_egg(chat_id, user_id)
     if status == "full":
-        await event.reply(
-            "🍒🍒 Выпало яйцо, но на ферме нет свободного слота.",
-            parse_mode=None,
-        )
         return
     remaining_minutes = math.ceil((egg.egg_hatch_at - egg.created_at) / 60)
     await event.reply(

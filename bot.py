@@ -1876,9 +1876,11 @@ async def announce_release() -> None:
 
 
 async def send_work_payout_notifications(payouts: list[dict]) -> int:
-    """Отправить уведомления в разрешённые топики и вернуть их число."""
+    """Уведомить о зарплате только чаты с игроками без очков."""
     sent_count = 0
     for payout in payouts:
+        if not payout["zero_balance_users"]:
+            continue
         topic_ids = await store.notification_topic_ids(payout["chat_id"])
         for topic_id in topic_ids:
             try:
@@ -2105,7 +2107,15 @@ async def casino_command(event) -> None:
             return
         notification_topics = await store.notification_topic_ids(chat_id)
         sent_count = await send_work_payout_notifications(payouts)
-        if not notification_topics:
+        has_zero_balance_users = any(
+            payout["zero_balance_users"] for payout in payouts
+        )
+        if not has_zero_balance_users:
+            await event.reply(
+                "✅ Очки начислены. Игроков с нулевым балансом нет, "
+                "поэтому уведомление не отправлено."
+            )
+        elif not notification_topics:
             await event.reply(
                 "✅ Очки начислены, но уведомления выключены во всех топиках."
             )
