@@ -186,5 +186,73 @@ if (
   throw new Error("Выбор удочки не заблокирован во время ловли");
 }
 
+await page.setViewportSize({ width: 390, height: 760 });
+await page.reload();
+await page.locator('[data-rod-option="professional"]').click();
+await page.screenshot({
+  path: join(outputPath, "mobile-idle.png"),
+  fullPage: true,
+});
+
+const mobileLayout = await page.evaluate(() => {
+  const scene = document.querySelector("#lake-scene").getBoundingClientRect();
+  const fisherElement = document.querySelector("#fisher");
+  const seatElement = document.querySelector(".fisher-seat");
+  const fisher = fisherElement.getBoundingClientRect();
+  const fisherStyle = getComputedStyle(fisherElement);
+  const seatStyle = getComputedStyle(seatElement);
+  return {
+    fisherInside: fisher.left >= scene.left && fisher.right <= scene.right,
+    sharedAnchor:
+      fisherStyle.left === seatStyle.left
+      && fisherStyle.bottom === seatStyle.bottom
+      && fisherStyle.width === seatStyle.width,
+  };
+});
+if (!mobileLayout.fisherInside || !mobileLayout.sharedAnchor) {
+  throw new Error("Рыбак или табурет смещены в мобильной компоновке");
+}
+
+await page.evaluate(() => { Math.random = () => 0; });
+await page.locator("#cast-button").click();
+await page.clock.runFor(1000);
+await page.screenshot({
+  path: join(outputPath, "mobile-waiting.png"),
+  fullPage: true,
+});
+
+await page.clock.runFor(2100);
+if (await page.locator("#lake-scene").getAttribute("data-state") !== "playing") {
+  throw new Error("Мобильная мини-игра не запустилась");
+}
+await page.screenshot({
+  path: join(outputPath, "mobile-playing.png"),
+  fullPage: true,
+});
+
+await page.setViewportSize({ width: 480, height: 760 });
+await page.screenshot({
+  path: join(outputPath, "mobile-resized.png"),
+  fullPage: true,
+});
+
+await page.setViewportSize({ width: 320, height: 650 });
+await page.reload();
+await page.screenshot({
+  path: join(outputPath, "mobile-320.png"),
+  fullPage: true,
+});
+const narrowLayout = await page.evaluate(() => {
+  const scene = document.querySelector("#lake-scene").getBoundingClientRect();
+  const fisher = document.querySelector("#fisher").getBoundingClientRect();
+  return {
+    noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
+    fisherInside: fisher.left >= scene.left && fisher.right <= scene.right,
+  };
+});
+if (!narrowLayout.noHorizontalOverflow || !narrowLayout.fisherInside) {
+  throw new Error("Компоновка не помещается на ширине 320px");
+}
+
 await browser.close();
 await server.close();

@@ -670,7 +670,7 @@ footer span {
 .lake-scene {
   background:
     linear-gradient(rgba(18, 57, 62, .03), rgba(18, 57, 62, .03)),
-    url("/assets/fishing/lake-background.png") center / cover no-repeat;
+    url("/assets/fishing/lake-background.png") left center / cover no-repeat;
   image-rendering: pixelated;
 }
 
@@ -688,9 +688,9 @@ footer span {
 }
 
 .fisher {
-  bottom: 10%;
-  left: 17%;
-  width: clamp(225px, 25vw, 305px);
+  bottom: var(--fisher-bottom, 10%);
+  left: var(--fisher-left, 17%);
+  width: var(--fisher-width, clamp(225px, 25vw, 305px));
   height: auto;
   aspect-ratio: 100 / 121;
   background-image:
@@ -721,9 +721,9 @@ footer span {
 .fisher-seat {
   position: absolute;
   z-index: 7;
-  bottom: 10%;
-  left: 17%;
-  width: clamp(225px, 25vw, 305px);
+  bottom: var(--fisher-bottom, 10%);
+  left: var(--fisher-left, 17%);
+  width: var(--fisher-width, clamp(225px, 25vw, 305px));
   height: auto;
   aspect-ratio: 100 / 121;
   pointer-events: none;
@@ -824,8 +824,8 @@ footer span {
 }
 
 .bobber {
-  top: 57%;
-  left: 58%;
+  top: var(--bobber-top, 57%);
+  left: var(--bobber-left, 58%);
   width: 10px;
   height: 24px;
   border: 0;
@@ -848,8 +848,8 @@ footer span {
 }
 
 .bite-rings {
-  top: 62%;
-  left: 58%;
+  top: var(--rings-top, 62%);
+  left: var(--bobber-left, 58%);
 }
 
 .fishing-line-overlay {
@@ -894,32 +894,79 @@ footer span {
 }
 
 @media (max-width: 760px) {
+  .lake-scene {
+    min-height: min(620px, calc(100svh - 150px));
+  }
+
   .fisher {
-    bottom: 8%;
-    left: 5%;
-    width: 250px;
     height: auto;
-    transform: translateX(-45%);
   }
 
   .fisher-seat {
-    bottom: 8%;
-    left: 5%;
-    width: 250px;
     transform: translateX(-45%);
+  }
+
+  .status-card {
+    max-width: calc(100% - 24px);
   }
 }
 
 @media (max-width: 430px) {
-  .fisher {
-    left: 1%;
-    width: 235px;
-    height: auto;
+  .lake-scene {
+    min-height: min(570px, calc(100svh - 132px));
   }
 
-  .fisher-seat {
-    left: 1%;
-    width: 235px;
-    transform: translateX(-45%);
+  .status-card {
+    padding: 10px 12px 10px 9px;
+  }
+
+  .status-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px 10px;
+    padding: 14px 12px;
+  }
+
+  #cast-button {
+    width: 100%;
+    padding-inline: 10px;
+  }
+
+  .rod-picker {
+    width: 100%;
+  }
+
+  .rod-picker > div {
+    width: 100%;
+  }
+
+  .rod-picker button {
+    min-width: 0;
+    flex: 1 1 0;
+    padding-inline: 5px;
+    font-size: 8px;
+  }
+
+  .minigame {
+    right: 8px;
+    gap: 8px;
+    height: 58%;
+    padding: 10px;
+  }
+
+  .catch-column {
+    width: 64px;
+  }
+
+  .catch-column small {
+    width: 64px;
+  }
+
+  .progress-column {
+    width: 28px;
   }
 }

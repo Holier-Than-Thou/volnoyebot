@@ -242,6 +242,57 @@ function setStatus(icon: string, title: string, text: string): void {
   statusText.textContent = text;
 }
 
+const sceneArtwork = {
+  width: 1536,
+  height: 1024,
+  fisherAnchorX: 261,
+  fisherAnchorY: 856.5,
+  fisherWidth: 414,
+  bobberX: 890,
+  bobberY: 572,
+  ringsY: 615,
+};
+
+function updateSceneLayout(): void {
+  const width = scene.clientWidth;
+  const height = scene.clientHeight;
+  if (!width || !height) return;
+
+  const scale = Math.max(
+    width / sceneArtwork.width,
+    height / sceneArtwork.height,
+  );
+  const renderedHeight = sceneArtwork.height * scale;
+  const offsetY = (height - renderedHeight) / 2;
+  const visibleArtworkWidth = width / scale;
+  const compact = width / height < 1;
+  const bobberX = compact
+    ? Math.min(sceneArtwork.bobberX, visibleArtworkWidth * 0.78)
+    : sceneArtwork.bobberX;
+
+  scene.style.setProperty(
+    "--fisher-left",
+    `${sceneArtwork.fisherAnchorX * scale}px`,
+  );
+  scene.style.setProperty(
+    "--fisher-bottom",
+    `${height - (offsetY + sceneArtwork.fisherAnchorY * scale)}px`,
+  );
+  scene.style.setProperty(
+    "--fisher-width",
+    `${sceneArtwork.fisherWidth * scale}px`,
+  );
+  scene.style.setProperty("--bobber-left", `${bobberX * scale}px`);
+  scene.style.setProperty(
+    "--bobber-top",
+    `${offsetY + sceneArtwork.bobberY * scale}px`,
+  );
+  scene.style.setProperty(
+    "--rings-top",
+    `${offsetY + sceneArtwork.ringsY * scale}px`,
+  );
+}
+
 function setState(nextState: GameState): void {
   state = nextState;
   scene.dataset.state = nextState;
@@ -446,7 +497,15 @@ window.addEventListener("keyup", (event) => {
   setHolding(false);
 });
 window.addEventListener("blur", () => setHolding(false));
-window.addEventListener("resize", updateFishingLine);
+const sceneResizeObserver = new ResizeObserver(() => {
+  updateSceneLayout();
+  updateFishingLine();
+});
+sceneResizeObserver.observe(scene);
+window.addEventListener("resize", () => {
+  updateSceneLayout();
+  updateFishingLine();
+});
 
 const savedRod = window.localStorage.getItem("fishing-test-rod");
 if (
@@ -459,6 +518,7 @@ if (
 selectRod(selectedRod);
 await preloadRod(selectedRod);
 fisher.style.animationPlayState = "";
+updateSceneLayout();
 setState("idle");
 void Promise.all(
   (["classic", "bamboo", "professional"] as RodKind[]).map(preloadRod),
