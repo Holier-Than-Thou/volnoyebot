@@ -9,6 +9,7 @@ from . import museum
 
 
 MUSEUM_INCOME_INTERVAL_SECONDS = 24 * 60 * 60
+MAX_MUSEUM_DAILY_INCOME = 300_000
 
 
 def _create_museum_statues_table(
@@ -130,7 +131,7 @@ class MuseumStoreMixin:
                 (chat_id, user_id),
             ).fetchone()[0]
         )
-        return raw_income, max(0, raw_income)
+        return raw_income, min(MAX_MUSEUM_DAILY_INCOME, max(0, raw_income))
 
     def _accrue_museum_unlocked(
         self,
