@@ -248,6 +248,9 @@ const sceneArtwork = {
   fisherAnchorX: 261,
   fisherAnchorY: 856.5,
   fisherWidth: 414,
+  compactFisherAnchorX: 590,
+  compactFisherAnchorY: 755,
+  compactFisherWidth: 340,
   bobberX: 890,
   bobberY: 572,
   ringsY: 615,
@@ -270,8 +273,20 @@ function updateSceneLayout(): void {
     0,
     sceneArtwork.width - visibleArtworkWidth,
   );
+  const fisherAnchorX = compact
+    ? sceneArtwork.compactFisherAnchorX
+    : sceneArtwork.fisherAnchorX;
+  const fisherAnchorY = compact
+    ? sceneArtwork.compactFisherAnchorY
+    : sceneArtwork.fisherAnchorY;
+  const fisherWidth = compact
+    ? sceneArtwork.compactFisherWidth
+    : sceneArtwork.fisherWidth;
+  const compactCropSourceX = fisherAnchorX
+    - fisherWidth * .45
+    - visibleArtworkWidth * .02;
   const cropSourceX = compact
-    ? Math.min(120, availableHorizontalCrop)
+    ? Math.min(Math.max(0, compactCropSourceX), availableHorizontalCrop)
     : 0;
   const offsetX = -cropSourceX * scale;
   const bobberX = compact
@@ -284,15 +299,15 @@ function updateSceneLayout(): void {
   scene.style.setProperty("--background-left", `${offsetX}px`);
   scene.style.setProperty(
     "--fisher-left",
-    `${offsetX + sceneArtwork.fisherAnchorX * scale}px`,
+    `${offsetX + fisherAnchorX * scale}px`,
   );
   scene.style.setProperty(
     "--fisher-bottom",
-    `${height - (offsetY + sceneArtwork.fisherAnchorY * scale)}px`,
+    `${height - (offsetY + fisherAnchorY * scale)}px`,
   );
   scene.style.setProperty(
     "--fisher-width",
-    `${sceneArtwork.fisherWidth * scale}px`,
+    `${fisherWidth * scale}px`,
   );
   scene.style.setProperty(
     "--bobber-left",
