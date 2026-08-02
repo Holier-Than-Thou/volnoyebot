@@ -581,6 +581,15 @@ h1 {
   box-shadow: 0 3px 8px rgba(63, 85, 44, .2);
 }
 
+.rod-picker button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.rod-picker button.active:disabled {
+  opacity: .78;
+}
+
 .control-hint {
   display: flex;
   align-items: center;

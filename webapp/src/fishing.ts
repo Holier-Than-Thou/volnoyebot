@@ -136,6 +136,7 @@ const assetUrl = (path: string): string => (
 
 castButton.disabled = true;
 fisher.style.animationPlayState = "paused";
+rodButtons.forEach((button) => { button.disabled = true; });
 
 let state: GameState = "idle";
 let waitTimer: number | undefined;
@@ -199,16 +200,29 @@ function preloadRod(rod: RodKind): Promise<void> {
   return Promise.all(spriteSources[rod].map(preloadSprite)).then(() => undefined);
 }
 
+function updateRodControls(): void {
+  const lockedByState = ["casting", "waiting", "playing"].includes(state);
+  rodButtons.forEach((button) => {
+    button.disabled = lockedByState || castPending || rodPending;
+  });
+}
+
 async function changeRod(rod: RodKind): Promise<void> {
-  if (["casting", "playing"].includes(state) || rodPending) return;
+  if (
+    ["casting", "waiting", "playing"].includes(state)
+    || rodPending
+    || castPending
+  ) return;
   rodPending = true;
   castButton.disabled = true;
+  updateRodControls();
   fisher.style.animationPlayState = "paused";
   await preloadRod(rod);
   selectRod(rod);
   fisher.style.animationPlayState = "";
   rodPending = false;
   castButton.disabled = false;
+  updateRodControls();
 }
 
 function selectRod(rod: RodKind): void {
@@ -235,6 +249,7 @@ function setState(nextState: GameState): void {
   lakeBobber.classList.toggle("visible", ["waiting", "playing"].includes(nextState));
   biteRings.classList.toggle("visible", nextState === "playing");
   minigame.classList.toggle("visible", nextState === "playing");
+  updateRodControls();
   window.requestAnimationFrame(updateFishingLine);
 
   if (nextState === "idle") {
@@ -314,6 +329,7 @@ async function cast(): Promise<void> {
   if (["casting", "playing"].includes(state) || castPending || rodPending) return;
   castPending = true;
   castButton.disabled = true;
+  updateRodControls();
   await preloadRod(selectedRod);
   castPending = false;
   window.clearTimeout(waitTimer);

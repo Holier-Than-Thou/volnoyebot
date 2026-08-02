@@ -138,11 +138,15 @@ for (const rod of ["classic", "bamboo", "professional"]) {
       backgroundImage: getComputedStyle(element).backgroundImage,
       casting: element.classList.contains("casting"),
       state: element.closest("#lake-scene")?.getAttribute("data-state"),
+      rodsLocked: Array.from(
+        document.querySelectorAll("[data-rod-option]"),
+      ).every((button) => button.disabled),
     }));
     if (
       transition.state !== "waiting"
       || transition.casting
       || transition.backgroundImage === "none"
+      || !transition.rodsLocked
     ) {
       throw new Error(
         `Нестабильный переход после заброса (${rod}, попытка ${attempt + 1})`,
@@ -165,7 +169,21 @@ for (const rod of ["classic", "bamboo", "professional"]) {
       }
     }
     await page.locator("#cast-button").click();
+    if (await page.locator("[data-rod-option]:disabled").count() !== 0) {
+      throw new Error(`Выбор удочки не разблокирован после отмены (${rod})`);
+    }
   }
+}
+
+await page.reload();
+await page.evaluate(() => { Math.random = () => 0; });
+await page.locator("#cast-button").click();
+await page.clock.runFor(1000 + 1800);
+if (
+  await page.locator("#lake-scene").getAttribute("data-state") !== "playing"
+  || await page.locator("[data-rod-option]:disabled").count() !== 3
+) {
+  throw new Error("Выбор удочки не заблокирован во время ловли");
 }
 
 await browser.close();
