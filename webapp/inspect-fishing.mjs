@@ -79,6 +79,43 @@ for (const [index, position] of ["0", "33.333%", "66.667%", "100%"].entries()) {
 }
 
 await page.reload();
+await page.locator('[data-rod-option="professional"]').click();
+await page.locator("#fisher").evaluate((element) => {
+  element.style.animation = "none";
+});
+for (const [index, position] of ["0", "33.333%", "66.667%", "100%"].entries()) {
+  await page.locator("#fisher").evaluate(
+    (element, backgroundPosition) => {
+      element.style.backgroundPositionX = backgroundPosition;
+    },
+    position,
+  );
+  await capture(`professional-idle-frame-${index + 1}`);
+}
+
+await page.reload();
+await page.locator('[data-rod-option="professional"]').click();
+await page.locator("#fisher").evaluate((element) => {
+  element.classList.add("casting");
+  element.style.animation = "none";
+});
+for (const [index, position] of ["0", "33.333%", "66.667%", "100%"].entries()) {
+  await page.locator("#fisher").evaluate(
+    (element, backgroundPosition) => {
+      element.style.backgroundPositionX = backgroundPosition;
+    },
+    position,
+  );
+  await capture(`professional-cast-frame-${index + 1}`);
+}
+
+await page.reload();
+await page.locator('[data-rod-option="professional"]').click();
+await page.locator("#cast-button").click();
+await page.clock.runFor(1000);
+await capture("professional-waiting");
+
+await page.reload();
 await page.locator('[data-rod-option="bamboo"]').click();
 await page.locator("#cast-button").click();
 await page.clock.runFor(1000);
@@ -90,6 +127,46 @@ if (await page.locator("#lake-scene").getAttribute("data-state") !== "idle") {
   throw new Error("Повторное нажатие не прервало ожидание");
 }
 await capture("12-waiting-cancelled");
+
+for (const rod of ["classic", "bamboo", "professional"]) {
+  await page.reload();
+  await page.locator(`[data-rod-option="${rod}"]`).click();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.locator("#cast-button").click();
+    await page.clock.runFor(1000);
+    const transition = await page.locator("#fisher").evaluate((element) => ({
+      backgroundImage: getComputedStyle(element).backgroundImage,
+      casting: element.classList.contains("casting"),
+      state: element.closest("#lake-scene")?.getAttribute("data-state"),
+    }));
+    if (
+      transition.state !== "waiting"
+      || transition.casting
+      || transition.backgroundImage === "none"
+    ) {
+      throw new Error(
+        `Нестабильный переход после заброса (${rod}, попытка ${attempt + 1})`,
+      );
+    }
+    for (let sample = 0; sample < 50; sample += 1) {
+      await page.clock.runFor(10);
+      const positions = await page.locator("#fisher").evaluate((element) =>
+        getComputedStyle(element).backgroundPositionX
+          .split(",")
+          .map((value) => Number.parseFloat(value)),
+      );
+      const stablePositions = [0, 33.333, 66.667, 100];
+      if (positions.some((position) =>
+        stablePositions.every((stable) => Math.abs(position - stable) > .01)
+      )) {
+        throw new Error(
+          `Промежуточная позиция спрайта (${rod}): ${positions.join(", ")}`,
+        );
+      }
+    }
+    await page.locator("#cast-button").click();
+  }
+}
 
 await browser.close();
 await server.close();

@@ -692,13 +692,21 @@ footer span {
   background-repeat: no-repeat;
   image-rendering: pixelated;
   transform: translateX(-45%);
-  animation: fisher-idle 1.5s linear infinite;
+  animation: fisher-idle 1.5s step-end infinite;
 }
 
 .fisher[data-rod="bamboo"] {
-  background-image:
-    url("/assets/fishing/fisher-idle-rod-bamboo.png"),
-    url("/assets/fishing/fisher-idle-body.png");
+  background-image: url("/assets/fishing/fisher-idle-bamboo.png");
+  background-size: 400% 100%;
+  transform: translateX(-45%) scale(1.02);
+  transform-origin: 42% 87%;
+}
+
+.fisher[data-rod="professional"] {
+  background-image: url("/assets/fishing/fisher-idle-professional.png");
+  background-size: 400% 100%;
+  transform: translateX(-45%) scale(.96);
+  transform-origin: 42% 87%;
 }
 
 .fisher-seat {
@@ -777,13 +785,19 @@ footer span {
     url("/assets/fishing/fisher-cast-body.png");
   transform: translateX(-45%) scale(1.09);
   transform-origin: 47% 87%;
-  animation: fisher-cast .95s linear 1;
+  animation: fisher-cast .95s step-end 1;
 }
 
 .fisher.casting[data-rod="bamboo"] {
-  background-image:
-    url("/assets/fishing/fisher-cast-rod-bamboo.png"),
-    url("/assets/fishing/fisher-cast-body.png");
+  background-image: url("/assets/fishing/fisher-cast-bamboo.png");
+  background-size: 400% 100%;
+  transform: translateX(-45%) scale(1.112);
+}
+
+.fisher.casting[data-rod="professional"] {
+  background-image: url("/assets/fishing/fisher-cast-professional.png");
+  background-size: 400% 100%;
+  transform: translateX(-45%) scale(1.046);
 }
 
 @keyframes fisher-idle {

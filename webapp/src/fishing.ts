@@ -1,7 +1,7 @@
 import "./fishing.css";
 
 type GameState = "idle" | "casting" | "waiting" | "playing" | "caught" | "lost";
-type RodKind = "classic" | "bamboo";
+type RodKind = "classic" | "bamboo" | "professional";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("Не найден корневой элемент приложения");
@@ -85,6 +85,7 @@ app.innerHTML = `
         <div>
           <button type="button" data-rod-option="classic">Обычная</button>
           <button type="button" data-rod-option="bamboo">Бамбук</button>
+          <button type="button" data-rod-option="professional">Профи</button>
         </div>
       </div>
       <div class="control-hint">
@@ -129,8 +130,16 @@ const rodButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-rod-option]"),
 );
 
+const assetUrl = (path: string): string => (
+  `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`
+);
+
+castButton.disabled = true;
+fisher.style.animationPlayState = "paused";
+
 let state: GameState = "idle";
 let waitTimer: number | undefined;
+let castFallbackTimer: number | undefined;
 let animationFrame: number | undefined;
 let lastFrame = 0;
 let holding = false;
@@ -144,6 +153,63 @@ let catchProgress = 0.42;
 let roundStartedAt = 0;
 let bestTime: number | null = null;
 let selectedRod: RodKind = "classic";
+let castPending = false;
+let rodPending = false;
+
+const spriteSources: Record<RodKind, string[]> = {
+  classic: [
+    assetUrl("assets/fishing/fisher-idle-rod.png"),
+    assetUrl("assets/fishing/fisher-idle-body.png"),
+    assetUrl("assets/fishing/fisher-cast-rod.png"),
+    assetUrl("assets/fishing/fisher-cast-body.png"),
+  ],
+  bamboo: [
+    assetUrl("assets/fishing/fisher-idle-bamboo.png"),
+    assetUrl("assets/fishing/fisher-cast-bamboo.png"),
+  ],
+  professional: [
+    assetUrl("assets/fishing/fisher-idle-professional.png"),
+    assetUrl("assets/fishing/fisher-cast-professional.png"),
+  ],
+};
+
+const spriteLoads = new Map<string, Promise<void>>();
+
+function preloadSprite(source: string): Promise<void> {
+  const pending = spriteLoads.get(source);
+  if (pending) return pending;
+
+  const loading = new Promise<void>((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      if (typeof image.decode === "function") {
+        void image.decode().catch(() => undefined).finally(resolve);
+      } else {
+        resolve();
+      }
+    };
+    image.onerror = () => resolve();
+    image.src = source;
+  });
+  spriteLoads.set(source, loading);
+  return loading;
+}
+
+function preloadRod(rod: RodKind): Promise<void> {
+  return Promise.all(spriteSources[rod].map(preloadSprite)).then(() => undefined);
+}
+
+async function changeRod(rod: RodKind): Promise<void> {
+  if (["casting", "playing"].includes(state) || rodPending) return;
+  rodPending = true;
+  castButton.disabled = true;
+  fisher.style.animationPlayState = "paused";
+  await preloadRod(rod);
+  selectRod(rod);
+  fisher.style.animationPlayState = "";
+  rodPending = false;
+  castButton.disabled = false;
+}
 
 function selectRod(rod: RodKind): void {
   selectedRod = rod;
@@ -229,23 +295,32 @@ function updateFishingLine(): void {
   );
 }
 
-function cast(): void {
+function finishCast(): void {
+  if (state !== "casting") return;
+  window.clearTimeout(castFallbackTimer);
+  castFallbackTimer = undefined;
+  setState("waiting");
+  const biteDelay = 1800 + Math.random() * 3200;
+  waitTimer = window.setTimeout(startMinigame, biteDelay);
+}
+
+async function cast(): Promise<void> {
   if (state === "waiting") {
     window.clearTimeout(waitTimer);
     waitTimer = undefined;
     setState("idle");
     return;
   }
-  if (["casting", "playing"].includes(state)) return;
+  if (["casting", "playing"].includes(state) || castPending || rodPending) return;
+  castPending = true;
+  castButton.disabled = true;
+  await preloadRod(selectedRod);
+  castPending = false;
   window.clearTimeout(waitTimer);
   window.cancelAnimationFrame(animationFrame ?? 0);
   setState("casting");
 
-  waitTimer = window.setTimeout(() => {
-    setState("waiting");
-    const biteDelay = 1800 + Math.random() * 3200;
-    waitTimer = window.setTimeout(startMinigame, biteDelay);
-  }, 950);
+  castFallbackTimer = window.setTimeout(finishCast, 980);
 }
 
 function startMinigame(): void {
@@ -320,11 +395,18 @@ function setHolding(value: boolean): void {
   scene.classList.toggle("holding", value);
 }
 
-castButton.addEventListener("click", cast);
+castButton.addEventListener("click", () => void cast());
+fisher.addEventListener("animationend", (event) => {
+  if (event.animationName === "fisher-cast") finishCast();
+});
 rodButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const rod = button.dataset.rodOption;
-    if (rod === "classic" || rod === "bamboo") selectRod(rod);
+    if (
+      rod === "classic"
+      || rod === "bamboo"
+      || rod === "professional"
+    ) void changeRod(rod);
   });
 });
 scene.addEventListener("pointerdown", (event) => {
@@ -351,8 +433,17 @@ window.addEventListener("blur", () => setHolding(false));
 window.addEventListener("resize", updateFishingLine);
 
 const savedRod = window.localStorage.getItem("fishing-test-rod");
-if (savedRod === "classic" || savedRod === "bamboo") {
+if (
+  savedRod === "classic"
+  || savedRod === "bamboo"
+  || savedRod === "professional"
+) {
   selectedRod = savedRod;
 }
 selectRod(selectedRod);
+await preloadRod(selectedRod);
+fisher.style.animationPlayState = "";
 setState("idle");
+void Promise.all(
+  (["classic", "bamboo", "professional"] as RodKind[]).map(preloadRod),
+);
