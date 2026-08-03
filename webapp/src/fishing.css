@@ -832,25 +832,98 @@ footer span {
 .bobber {
   top: var(--bobber-top, 57%);
   left: var(--bobber-left, 58%);
-  width: 10px;
-  height: 24px;
+  width: 9px;
+  height: 19px;
   border: 0;
   border-radius: 0;
-  background:
-    linear-gradient(
-      to bottom,
-      transparent 0 2px,
-      #4b2b22 2px 4px,
-      #f4df9b 4px 8px,
-      #4b2b22 8px 10px,
-      #e55032 10px 16px,
-      #f4df9b 16px 22px,
-      #4b2b22 22px 24px
-    );
-  box-shadow:
-    -2px 8px 0 #4b2b22,
-    2px 8px 0 #4b2b22;
+  background: none;
+  box-shadow: none;
   image-rendering: pixelated;
+}
+
+.bobber.visible,
+[data-state="playing"] .bobber {
+  animation: none;
+}
+
+.bobber > i {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background:
+    linear-gradient(to right, #4b2b22 0 1px, #f4df9b 1px 2px)
+    no-repeat 3px 0 / 2px 6px;
+  filter: drop-shadow(1px 1px 0 rgba(42, 42, 31, .42));
+  transform-origin: 50% 35%;
+  will-change: clip-path, transform;
+}
+
+.bobber > i::before,
+.bobber > i::after {
+  position: absolute;
+  content: "";
+}
+
+.bobber > i::before {
+  top: 5px;
+  left: 0;
+  width: 9px;
+  height: 14px;
+  background: #4b2b22;
+  clip-path: polygon(
+    3px 0, 6px 0, 6px 1px, 8px 1px, 8px 3px,
+    9px 3px, 9px 11px, 8px 11px, 8px 13px,
+    6px 13px, 6px 14px, 3px 14px, 3px 13px,
+    1px 13px, 1px 11px, 0 11px, 0 3px,
+    1px 3px, 1px 1px, 3px 1px
+  );
+}
+
+.bobber > i::after {
+  top: 7px;
+  left: 2px;
+  width: 5px;
+  height: 10px;
+  background: linear-gradient(to bottom, #e55032 0 48%, #f4df9b 48% 100%);
+  clip-path: polygon(
+    1px 0, 4px 0, 4px 1px, 5px 1px,
+    5px 8px, 4px 8px, 4px 10px,
+    1px 10px, 1px 8px, 0 8px, 0 1px, 1px 1px
+  );
+}
+
+.bobber.visible > i {
+  animation: bobbing 1.6s steps(2, end) infinite;
+}
+
+@keyframes bobbing {
+  0%, 100% {
+    clip-path: inset(0 0 1px 0);
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    clip-path: inset(0 0 5px 0);
+    transform: translateY(3px) rotate(2deg);
+  }
+}
+
+[data-state="playing"] .bobber > i {
+  animation: bite .66s steps(3, end) infinite;
+}
+
+@keyframes bite {
+  0%, 100% {
+    clip-path: inset(0 0 2px 0);
+    transform: translateY(1px) rotate(-2deg);
+  }
+  35% {
+    clip-path: inset(0 0 6px 0);
+    transform: translateY(4px) rotate(3deg);
+  }
+  70% {
+    clip-path: inset(0 0 10px 0);
+    transform: translateY(7px) rotate(-2deg);
+  }
 }
 
 .bite-rings {

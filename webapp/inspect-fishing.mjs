@@ -280,10 +280,60 @@ await page.screenshot({
   path: join(outputPath, "mobile-waiting.png"),
   fullPage: true,
 });
+const pixelBobber = await page.locator("#lake-bobber").evaluate((element) => {
+  const marker = element.querySelector("i");
+  const markerStyle = getComputedStyle(marker);
+  const bodyStyle = getComputedStyle(marker, "::before");
+  const fillStyle = getComputedStyle(marker, "::after");
+  const rect = element.getBoundingClientRect();
+  return {
+    width: rect.width,
+    height: rect.height,
+    animationName: markerStyle.animationName,
+    bodyClip: bodyStyle.clipPath,
+    bodyColor: bodyStyle.backgroundColor,
+    fill: fillStyle.backgroundImage,
+  };
+});
+if (
+  pixelBobber.width > 9
+  || pixelBobber.height > 19
+  || pixelBobber.animationName !== "bobbing"
+  || pixelBobber.bodyClip === "none"
+  || pixelBobber.bodyColor === "rgba(0, 0, 0, 0)"
+  || pixelBobber.fill === "none"
+) {
+  throw new Error("Поплавок не получил компактный округлый пиксельный силуэт");
+}
 
 await page.clock.runFor(2100);
 if (await page.locator("#lake-scene").getAttribute("data-state") !== "playing") {
   throw new Error("Мобильная мини-игра не запустилась");
+}
+const biteFrameA = await page.locator("#lake-bobber > i").evaluate((element) => {
+  const style = getComputedStyle(element);
+  return {
+    animationName: style.animationName,
+    clipPath: style.clipPath,
+    transform: style.transform,
+  };
+});
+await page.clock.runFor(260);
+const biteFrameB = await page.locator("#lake-bobber > i").evaluate((element) => {
+  const style = getComputedStyle(element);
+  return {
+    clipPath: style.clipPath,
+    transform: style.transform,
+  };
+});
+if (
+  biteFrameA.animationName !== "bite"
+  || (
+    biteFrameA.clipPath === biteFrameB.clipPath
+    && biteFrameA.transform === biteFrameB.transform
+  )
+) {
+  throw new Error("Поплавок не погружается в воду во время поклёвки");
 }
 await page.screenshot({
   path: join(outputPath, "mobile-playing.png"),
