@@ -486,6 +486,11 @@ h1 {
   background: #fff0cd;
 }
 
+.pixel-target-icon,
+.pixel-hook-icon {
+  display: none;
+}
+
 .in-zone .player-float {
   background: #f3c94c;
   box-shadow: 0 0 12px #f3df78;
@@ -931,6 +936,134 @@ footer span {
     display: block;
   }
 
+  .minigame {
+    top: 10px;
+    right: 8px;
+    gap: 6px;
+    width: 96px;
+    height: 174px;
+    padding: 7px;
+    border: 3px solid #ead39a;
+    border-radius: 4px;
+    background: rgba(20, 57, 63, .94);
+    box-shadow: 4px 4px 0 rgba(44, 42, 32, .52);
+    transform: translateX(24px);
+    transition: opacity .18s, transform .18s;
+    backdrop-filter: none;
+  }
+
+  .minigame.visible {
+    transform: translateX(0);
+  }
+
+  .catch-column,
+  .progress-column {
+    grid-template-rows: auto 1fr;
+  }
+
+  .catch-column {
+    width: 52px;
+  }
+
+  .progress-column {
+    width: 17px;
+  }
+
+  .scale-label {
+    margin-bottom: 4px;
+    font-size: 7px;
+    letter-spacing: .04em;
+  }
+
+  .catch-track,
+  .progress-track {
+    border-width: 2px;
+    border-radius: 2px;
+    background-color: #224e58;
+    background-size: 100% 8px;
+    box-shadow:
+      inset 2px 0 0 rgba(255, 255, 255, .08),
+      inset -2px 0 0 rgba(7, 31, 36, .36);
+  }
+
+  .safe-zone {
+    right: auto;
+    left: 50%;
+    width: 36px;
+    height: 24%;
+    border: 0;
+    border-radius: 0;
+    transform: translateX(-50%);
+    background: none;
+    box-shadow: none;
+  }
+
+  .pixel-target-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: block;
+    width: 36px;
+    height: 24px;
+    transform: translate(-50%, -50%);
+    image-rendering: pixelated;
+  }
+
+  .pixel-fish-outline {
+    fill: #26452f;
+  }
+
+  .pixel-fish-body {
+    fill: #8fca57;
+  }
+
+  .pixel-fish-eye {
+    fill: #f2d984;
+  }
+
+  .player-float {
+    width: 26px;
+    height: 30px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .player-float i {
+    display: none;
+  }
+
+  .pixel-hook-icon {
+    display: block;
+    width: 24px;
+    height: 32px;
+    image-rendering: pixelated;
+  }
+
+  .pixel-hook-outline {
+    fill: #3b2b24;
+  }
+
+  .pixel-hook-body {
+    fill: #f3d477;
+  }
+
+  .in-zone .pixel-hook-body {
+    fill: #fff0a5;
+  }
+
+  .in-zone .player-float {
+    background: none;
+    box-shadow: none;
+    filter: drop-shadow(0 0 3px #d9ed7d);
+  }
+
+  .catch-column small,
+  .fish-mark {
+    display: none;
+  }
+
   .status-card {
     max-width: calc(100% - 24px);
   }
@@ -976,22 +1109,4 @@ footer span {
     font-size: 8px;
   }
 
-  .minigame {
-    right: 8px;
-    gap: 8px;
-    height: 58%;
-    padding: 10px;
-  }
-
-  .catch-column {
-    width: 64px;
-  }
-
-  .catch-column small {
-    width: 64px;
-  }
-
-  .progress-column {
-    width: 28px;
-  }
 }

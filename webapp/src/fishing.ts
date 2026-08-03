@@ -62,8 +62,20 @@ app.innerHTML = `
         <div class="catch-column">
           <span class="scale-label">Рыба</span>
           <div class="catch-track" id="catch-track">
-            <div class="safe-zone" id="safe-zone"></div>
-            <div class="player-float" id="player-float"><i></i></div>
+            <div class="safe-zone" id="safe-zone">
+              <svg class="pixel-target-icon" viewBox="0 0 18 12" aria-hidden="true">
+                <path class="pixel-fish-outline" d="M2 3h2V1h8v2h2V2h4v8h-4V9h-2v2H4V9H2V7H0V5h2z" />
+                <path class="pixel-fish-body" d="M4 3h7v2h3V4h2v4h-2V7h-3v2H4V7H2V5h2z" />
+                <path class="pixel-fish-eye" d="M5 4h2v2H5z" />
+              </svg>
+            </div>
+            <div class="player-float" id="player-float">
+              <i></i>
+              <svg class="pixel-hook-icon" viewBox="0 0 12 16" aria-hidden="true">
+                <path class="pixel-hook-outline" d="M4 0h4v3H7v7h2V8h3v4h-1v2H9v2H5v-1H3v-2H2V9h3v3h2V2H4z" />
+                <path class="pixel-hook-body" d="M5 1h2v1H6v9h3V9h2v2h-1v2H8v1H5v-1H4v-2h1z" />
+              </svg>
+            </div>
           </div>
           <small>Удерживайте маркер в зелёной зоне</small>
         </div>

@@ -249,6 +249,33 @@ await page.screenshot({
   path: join(outputPath, "mobile-playing.png"),
   fullPage: true,
 });
+const compactMinigame = await page.evaluate(() => {
+  const scene = document.querySelector("#lake-scene").getBoundingClientRect();
+  const panel = document.querySelector("#minigame").getBoundingClientRect();
+  const bobber = document.querySelector("#lake-bobber").getBoundingClientRect();
+  const fishIcon = getComputedStyle(document.querySelector(".pixel-target-icon"));
+  const hookIcon = getComputedStyle(document.querySelector(".pixel-hook-icon"));
+  const overlapsBobber = !(
+    panel.right <= bobber.left
+    || panel.left >= bobber.right
+    || panel.bottom <= bobber.top
+    || panel.top >= bobber.bottom
+  );
+  return {
+    inTopRight: panel.top - scene.top <= 16 && scene.right - panel.right <= 16,
+    compact: panel.width <= scene.width * .3,
+    iconsVisible: fishIcon.display !== "none" && hookIcon.display !== "none",
+    overlapsBobber,
+  };
+});
+if (
+  !compactMinigame.inTopRight
+  || !compactMinigame.compact
+  || !compactMinigame.iconsVisible
+  || compactMinigame.overlapsBobber
+) {
+  throw new Error("Мобильная шкала закрывает сцену или потеряла пиксельные маркеры");
+}
 
 await page.setViewportSize({ width: 480, height: 760 });
 await page.screenshot({
@@ -275,6 +302,14 @@ const narrowLayout = await page.evaluate(() => {
 if (!narrowLayout.noHorizontalOverflow || !narrowLayout.fisherInside) {
   throw new Error("Компоновка не помещается на ширине 320px");
 }
+
+await page.evaluate(() => { Math.random = () => 0; });
+await page.locator("#cast-button").click();
+await page.clock.runFor(1000 + 2100);
+await page.screenshot({
+  path: join(outputPath, "mobile-playing-320.png"),
+  fullPage: true,
+});
 
 await browser.close();
 await server.close();
