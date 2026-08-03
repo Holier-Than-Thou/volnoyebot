@@ -15,6 +15,28 @@ TRIPLE_PRIZES = {
 SLOT_ANIMATION_SECONDS = 2.4
 
 
+def resolve_bet_amount(
+    balance: int,
+    requested_bet: int | None,
+    max_bet: int | None,
+) -> tuple[str, int]:
+    """Применить персональный предел к обычной ставке или ва-банку.
+
+    Для обычной ставки превышение возвращается отдельным статусом. Ва-банк
+    автоматически ограничивается меньшим из баланса и заданного предела.
+    """
+    actual_bet = balance if requested_bet is None else requested_bet
+    if max_bet is None:
+        return "ok", actual_bet
+    if max_bet <= 0:
+        raise ValueError("Максимальная ставка должна быть положительной")
+    if requested_bet is None:
+        return "ok", min(actual_bet, max_bet)
+    if actual_bet > max_bet:
+        return "limit", max_bet
+    return "ok", actual_bet
+
+
 def fit_telegram_message(
     heading: str,
     rows: list[str],
@@ -89,6 +111,7 @@ def help_text(min_bet: int) -> str:
 каз <сумма от {min_bet}>
 каз ставка <сумма от {min_bet}>
 каз ва-банк / каз вабанк
+каз макс <сумма> / каз макс нет
 каз дать <сумма> (ответом на сообщение)
 каз деп <ресурс>
 каз призы

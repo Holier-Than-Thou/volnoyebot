@@ -107,6 +107,7 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
                 last_bet_at REAL NOT NULL DEFAULT 0,
                 last_command_at REAL NOT NULL DEFAULT 0,
                 first_command_at REAL,
+                max_bet INTEGER CHECK (max_bet IS NULL OR max_bet > 0),
                 PRIMARY KEY (chat_id, user_id)
             )
             """
@@ -155,6 +156,12 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
         if "first_command_at" not in columns:
             self.connection.execute(
                 "ALTER TABLE balances ADD COLUMN first_command_at REAL"
+            )
+        if "max_bet" not in columns:
+            self.connection.execute(
+                "ALTER TABLE balances "
+                "ADD COLUMN max_bet INTEGER "
+                "CHECK (max_bet IS NULL OR max_bet > 0)"
             )
         self.connection.execute(
             """
@@ -533,6 +540,42 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
             ).fetchone()
             return int(row["balance"])
 
+    async def get_max_bet(self, chat_id: int, user_id: int) -> int | None:
+        """Вернуть персональный предел ставки казино, если он установлен."""
+        async with self.lock:
+            row = self.connection.execute(
+                "SELECT max_bet FROM balances WHERE chat_id = ? AND user_id = ?",
+                (chat_id, user_id),
+            ).fetchone()
+            if row is None or row["max_bet"] is None:
+                return None
+            return int(row["max_bet"])
+
+    async def set_max_bet(
+        self,
+        chat_id: int,
+        user_id: int,
+        display_name: str,
+        max_bet: int | None,
+    ) -> None:
+        """Установить или снять персональный предел ставки казино."""
+        if max_bet is not None and max_bet <= 0:
+            raise ValueError("Максимальная ставка должна быть положительной")
+        async with self.lock:
+            self.connection.execute(
+                """
+                INSERT INTO balances(
+                    chat_id, user_id, display_name, balance, max_bet
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    max_bet = excluded.max_bet
+                """,
+                (chat_id, user_id, display_name, INITIAL_BALANCE, max_bet),
+            )
+            self.connection.commit()
+
     async def mark_command_activity(
         self,
         chat_id: int,
@@ -679,7 +722,7 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
             )
             row = self.connection.execute(
                 """
-                SELECT balance, last_bet_at FROM balances
+                SELECT balance, last_bet_at, max_bet FROM balances
                 WHERE chat_id = ? AND user_id = ?
                 """,
                 (chat_id, user_id),
@@ -702,7 +745,14 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
                 self.connection.commit()
                 return "cooldown", int(row["balance"]), remaining, 0
 
-            actual_bet = int(row["balance"]) if bet is None else bet
+            limit_status, actual_bet = casino.resolve_bet_amount(
+                int(row["balance"]),
+                bet,
+                None if row["max_bet"] is None else int(row["max_bet"]),
+            )
+            if limit_status == "limit":
+                self.connection.commit()
+                return "limit", int(row["balance"]), 0, actual_bet
             if actual_bet <= 0 or row["balance"] < actual_bet:
                 self.connection.commit()
                 return "insufficient", int(row["balance"]), 0, 0
@@ -2163,6 +2213,50 @@ async def casino_command(event) -> None:
         )
         return
 
+    if command == "макс":
+        if not args:
+            max_bet = await store.get_max_bet(chat_id, sender.id)
+            if max_bet is None:
+                await event.reply("🎚 Максимальная ставка не ограничена.")
+            else:
+                await event.reply(
+                    "🎚 Максимальная ставка: "
+                    f"{format_points(max_bet)} очков."
+                )
+            return
+        if len(args) != 1:
+            await event.reply(
+                "Формат: `каз макс 1000`; снять ограничение — "
+                "`каз макс нет` или `каз макс 0`."
+            )
+            return
+
+        raw_limit = args[0].casefold()
+        if raw_limit in {"нет", "0"}:
+            await store.set_max_bet(chat_id, sender.id, name, None)
+            await event.reply("🎚 Ограничение максимальной ставки снято.")
+            return
+        try:
+            max_bet = int(raw_limit)
+        except ValueError:
+            await event.reply("Максимальная ставка должна быть целым числом.")
+            return
+        if max_bet < MIN_BET:
+            await event.reply(
+                f"Максимальная ставка должна быть не меньше {MIN_BET}."
+            )
+            return
+        if max_bet > 9_223_372_036_854_775_807:
+            await event.reply("Указана слишком большая максимальная ставка.")
+            return
+        await store.set_max_bet(chat_id, sender.id, name, max_bet)
+        await event.reply(
+            "🎚 Максимальная ставка установлена: "
+            f"{format_points(max_bet)} очков.\n"
+            "Ва-банк также поставит не больше этой суммы."
+        )
+        return
+
     if command == "деп":
         if len(args) != 1 or args[0].lower() not in ASSETS:
             await event.reply(
@@ -2411,6 +2505,13 @@ async def casino_command(event) -> None:
         if bet_status == "insufficient":
             await event.reply(
                 f"Недостаточно очков. Текущий баланс: {balance_after_bet}."
+            )
+            return
+        if bet_status == "limit":
+            await event.reply(
+                "Ставка превышает ваш максимум: "
+                f"{format_points(bet)} очков.\n"
+                "Изменить ограничение: `каз макс Х`; снять: `каз макс нет`."
             )
             return
 
