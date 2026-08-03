@@ -403,16 +403,18 @@ function updateFishingLine(): void {
   const sceneRect = scene.getBoundingClientRect();
   const fisherRect = fisher.getBoundingClientRect();
   const bobberRect = lakeBobber.getBoundingClientRect();
-  const startX = fisherRect.left - sceneRect.left + fisherRect.width * 0.94;
-  const startY = fisherRect.top - sceneRect.top + fisherRect.height * 0.28;
+  const fightingClassic = state === "playing" && selectedRod === "classic";
+  const startX = fisherRect.left - sceneRect.left
+    + fisherRect.width * (fightingClassic ? 0.965 : 0.94);
+  const startY = fisherRect.top - sceneRect.top
+    + fisherRect.height * (fightingClassic ? 0.16 : 0.28);
   const endX = bobberRect.left - sceneRect.left + bobberRect.width / 2;
   const endY = bobberRect.top - sceneRect.top + 4;
   const controlX = (startX + endX) / 2;
   const midpointY = (startY + endY) / 2;
-  const sagDepth = Math.min(
-    55,
-    Math.max(30, Math.abs(endX - startX) * 0.1),
-  );
+  const sagDepth = fightingClassic
+    ? Math.min(24, Math.max(14, Math.abs(endX - startX) * 0.045))
+    : Math.min(55, Math.max(30, Math.abs(endX - startX) * 0.1));
   const controlY = midpointY + sagDepth * 2;
 
   fishingLineOverlay.setAttribute(
