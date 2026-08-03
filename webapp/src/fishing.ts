@@ -259,24 +259,16 @@ const sceneArtwork = {
   bobberY: 572,
   ringsY: 615,
   foregroundPosts: {
-    near: {
-      capLeft: 535,
-      capRight: 601,
-      shaftLeft: 551,
-      shaftRight: 584,
-      top: 670,
-      capBottom: 715,
-      bottom: 850,
-    },
-    far: {
-      capLeft: 655,
-      capRight: 716,
-      shaftLeft: 670,
-      shaftRight: 702,
-      top: 620,
-      capBottom: 665,
-      bottom: 795,
-    },
+    near: [
+      [552, 668], [588, 668], [596, 676], [596, 724],
+      [607, 731], [607, 749], [592, 755], [592, 815],
+      [558, 815], [558, 755], [543, 749], [543, 731], [551, 724],
+    ],
+    far: [
+      [663, 589], [699, 589], [706, 596], [706, 642],
+      [718, 650], [718, 669], [701, 675], [701, 750],
+      [668, 750], [668, 675], [653, 669], [653, 650], [661, 642],
+    ],
   },
 };
 
@@ -345,14 +337,11 @@ function updateSceneLayout(): void {
     `${offsetY + sceneArtwork.ringsY * scale}px`,
   );
 
-  Object.entries(sceneArtwork.foregroundPosts).forEach(([name, post]) => {
-    scene.style.setProperty(`--${name}-post-cap-left`, `${offsetX + post.capLeft * scale}px`);
-    scene.style.setProperty(`--${name}-post-cap-right`, `${offsetX + post.capRight * scale}px`);
-    scene.style.setProperty(`--${name}-post-shaft-left`, `${offsetX + post.shaftLeft * scale}px`);
-    scene.style.setProperty(`--${name}-post-shaft-right`, `${offsetX + post.shaftRight * scale}px`);
-    scene.style.setProperty(`--${name}-post-top`, `${offsetY + post.top * scale}px`);
-    scene.style.setProperty(`--${name}-post-cap-bottom`, `${offsetY + post.capBottom * scale}px`);
-    scene.style.setProperty(`--${name}-post-bottom`, `${offsetY + post.bottom * scale}px`);
+  Object.entries(sceneArtwork.foregroundPosts).forEach(([name, points]) => {
+    const clipPath = points
+      .map(([x, y]) => `${offsetX + x * scale}px ${offsetY + y * scale}px`)
+      .join(", ");
+    scene.style.setProperty(`--${name}-post-clip`, clipPath);
   });
 }
 

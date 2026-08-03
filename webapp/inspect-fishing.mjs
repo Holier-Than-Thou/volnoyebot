@@ -220,6 +220,7 @@ const mobileLayout = await page.evaluate(() => {
       postStyles.length === 2
       && postStyles.every((style) =>
         style.display !== "none"
+        && style.clipPath !== "none"
         && Number(style.zIndex) > Number(fisherStyle.zIndex)
       ),
   };

@@ -888,29 +888,11 @@ footer span {
 }
 
 .pier-post-near {
-  clip-path: polygon(
-    var(--near-post-cap-left) var(--near-post-top),
-    var(--near-post-cap-right) var(--near-post-top),
-    var(--near-post-cap-right) var(--near-post-cap-bottom),
-    var(--near-post-shaft-right) var(--near-post-cap-bottom),
-    var(--near-post-shaft-right) var(--near-post-bottom),
-    var(--near-post-shaft-left) var(--near-post-bottom),
-    var(--near-post-shaft-left) var(--near-post-cap-bottom),
-    var(--near-post-cap-left) var(--near-post-cap-bottom)
-  );
+  clip-path: polygon(var(--near-post-clip));
 }
 
 .pier-post-far {
-  clip-path: polygon(
-    var(--far-post-cap-left) var(--far-post-top),
-    var(--far-post-cap-right) var(--far-post-top),
-    var(--far-post-cap-right) var(--far-post-cap-bottom),
-    var(--far-post-shaft-right) var(--far-post-cap-bottom),
-    var(--far-post-shaft-right) var(--far-post-bottom),
-    var(--far-post-shaft-left) var(--far-post-bottom),
-    var(--far-post-shaft-left) var(--far-post-cap-bottom),
-    var(--far-post-cap-left) var(--far-post-cap-bottom)
-  );
+  clip-path: polygon(var(--far-post-clip));
 }
 
 [data-state="waiting"] .fishing-line-overlay,
