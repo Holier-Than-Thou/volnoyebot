@@ -188,6 +188,11 @@ if (
 
 await page.setViewportSize({ width: 390, height: 760 });
 await page.reload();
+await page.locator('[data-rod-option="classic"]').click();
+await page.screenshot({
+  path: join(outputPath, "mobile-idle-classic.png"),
+  fullPage: true,
+});
 await page.locator('[data-rod-option="professional"]').click();
 await page.screenshot({
   path: join(outputPath, "mobile-idle.png"),
@@ -198,9 +203,11 @@ const mobileLayout = await page.evaluate(() => {
   const scene = document.querySelector("#lake-scene").getBoundingClientRect();
   const fisherElement = document.querySelector("#fisher");
   const seatElement = document.querySelector(".fisher-seat");
+  const postElements = [...document.querySelectorAll(".pier-post-foreground")];
   const fisher = fisherElement.getBoundingClientRect();
   const fisherStyle = getComputedStyle(fisherElement);
   const seatStyle = getComputedStyle(seatElement);
+  const postStyles = postElements.map((element) => getComputedStyle(element));
   return {
     fisherInside:
       fisher.left >= scene.left - fisher.width * .25
@@ -209,9 +216,19 @@ const mobileLayout = await page.evaluate(() => {
       fisherStyle.left === seatStyle.left
       && fisherStyle.bottom === seatStyle.bottom
       && fisherStyle.width === seatStyle.width,
+    postAboveFisher:
+      postStyles.length === 2
+      && postStyles.every((style) =>
+        style.display !== "none"
+        && Number(style.zIndex) > Number(fisherStyle.zIndex)
+      ),
   };
 });
-if (!mobileLayout.fisherInside || !mobileLayout.sharedAnchor) {
+if (
+  !mobileLayout.fisherInside
+  || !mobileLayout.sharedAnchor
+  || !mobileLayout.postAboveFisher
+) {
   throw new Error("Рыбак или табурет смещены в мобильной компоновке");
 }
 

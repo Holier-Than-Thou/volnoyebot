@@ -875,6 +875,44 @@ footer span {
   filter: drop-shadow(1px 1px 0 rgba(36, 77, 70, .65));
 }
 
+.pier-post-foreground {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: none;
+  background:
+    url("/assets/fishing/lake-background.png")
+      var(--background-left, 0) center / cover no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.pier-post-near {
+  clip-path: polygon(
+    var(--near-post-cap-left) var(--near-post-top),
+    var(--near-post-cap-right) var(--near-post-top),
+    var(--near-post-cap-right) var(--near-post-cap-bottom),
+    var(--near-post-shaft-right) var(--near-post-cap-bottom),
+    var(--near-post-shaft-right) var(--near-post-bottom),
+    var(--near-post-shaft-left) var(--near-post-bottom),
+    var(--near-post-shaft-left) var(--near-post-cap-bottom),
+    var(--near-post-cap-left) var(--near-post-cap-bottom)
+  );
+}
+
+.pier-post-far {
+  clip-path: polygon(
+    var(--far-post-cap-left) var(--far-post-top),
+    var(--far-post-cap-right) var(--far-post-top),
+    var(--far-post-cap-right) var(--far-post-cap-bottom),
+    var(--far-post-shaft-right) var(--far-post-cap-bottom),
+    var(--far-post-shaft-right) var(--far-post-bottom),
+    var(--far-post-shaft-left) var(--far-post-bottom),
+    var(--far-post-shaft-left) var(--far-post-cap-bottom),
+    var(--far-post-cap-left) var(--far-post-cap-bottom)
+  );
+}
+
 [data-state="waiting"] .fishing-line-overlay,
 [data-state="playing"] .fishing-line-overlay {
   opacity: .92;
@@ -905,6 +943,10 @@ footer span {
 
   .fisher-seat {
     transform: translateX(-45%);
+  }
+
+  .pier-post-foreground {
+    display: block;
   }
 
   .status-card {

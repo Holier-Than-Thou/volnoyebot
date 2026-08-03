@@ -47,6 +47,8 @@ app.innerHTML = `
       <svg class="fishing-line-overlay" id="fishing-line-overlay" aria-hidden="true">
         <path id="fishing-line-path"></path>
       </svg>
+      <div class="pier-post-foreground pier-post-near" aria-hidden="true"></div>
+      <div class="pier-post-foreground pier-post-far" aria-hidden="true"></div>
 
       <div class="status-card" id="status-card">
         <span class="status-icon" id="status-icon">≈</span>
@@ -256,6 +258,26 @@ const sceneArtwork = {
   compactBobberX: 1040,
   bobberY: 572,
   ringsY: 615,
+  foregroundPosts: {
+    near: {
+      capLeft: 535,
+      capRight: 601,
+      shaftLeft: 551,
+      shaftRight: 584,
+      top: 670,
+      capBottom: 715,
+      bottom: 850,
+    },
+    far: {
+      capLeft: 655,
+      capRight: 716,
+      shaftLeft: 670,
+      shaftRight: 702,
+      top: 620,
+      capBottom: 665,
+      bottom: 795,
+    },
+  },
 };
 
 function updateSceneLayout(): void {
@@ -322,6 +344,16 @@ function updateSceneLayout(): void {
     "--rings-top",
     `${offsetY + sceneArtwork.ringsY * scale}px`,
   );
+
+  Object.entries(sceneArtwork.foregroundPosts).forEach(([name, post]) => {
+    scene.style.setProperty(`--${name}-post-cap-left`, `${offsetX + post.capLeft * scale}px`);
+    scene.style.setProperty(`--${name}-post-cap-right`, `${offsetX + post.capRight * scale}px`);
+    scene.style.setProperty(`--${name}-post-shaft-left`, `${offsetX + post.shaftLeft * scale}px`);
+    scene.style.setProperty(`--${name}-post-shaft-right`, `${offsetX + post.shaftRight * scale}px`);
+    scene.style.setProperty(`--${name}-post-top`, `${offsetY + post.top * scale}px`);
+    scene.style.setProperty(`--${name}-post-cap-bottom`, `${offsetY + post.capBottom * scale}px`);
+    scene.style.setProperty(`--${name}-post-bottom`, `${offsetY + post.bottom * scale}px`);
+  });
 }
 
 function setState(nextState: GameState): void {
