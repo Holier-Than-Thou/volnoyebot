@@ -13,10 +13,10 @@ class CasinoRulesTest(unittest.TestCase):
             ("limit", 1_000),
         )
 
-    def test_all_in_is_capped_by_personal_limit(self) -> None:
+    def test_all_in_above_personal_limit_is_rejected(self) -> None:
         self.assertEqual(
             casino.resolve_bet_amount(10_000, None, 1_000),
-            ("ok", 1_000),
+            ("limit", 1_000),
         )
         self.assertEqual(
             casino.resolve_bet_amount(500, None, 1_000),

@@ -740,11 +740,6 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
                 if cooldown_row is None
                 else int(cooldown_row["bet_cooldown_seconds"])
             )
-            remaining = cooldown_seconds - (now - row["last_bet_at"])
-            if not ignore_cooldown and remaining > 0:
-                self.connection.commit()
-                return "cooldown", int(row["balance"]), remaining, 0
-
             limit_status, actual_bet = casino.resolve_bet_amount(
                 int(row["balance"]),
                 bet,
@@ -753,6 +748,11 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
             if limit_status == "limit":
                 self.connection.commit()
                 return "limit", int(row["balance"]), 0, actual_bet
+
+            remaining = cooldown_seconds - (now - row["last_bet_at"])
+            if not ignore_cooldown and remaining > 0:
+                self.connection.commit()
+                return "cooldown", int(row["balance"]), remaining, 0
             if actual_bet <= 0 or row["balance"] < actual_bet:
                 self.connection.commit()
                 return "insufficient", int(row["balance"]), 0, 0
@@ -2253,7 +2253,7 @@ async def casino_command(event) -> None:
         await event.reply(
             "🎚 Максимальная ставка установлена: "
             f"{format_points(max_bet)} очков.\n"
-            "Ва-банк также поставит не больше этой суммы."
+            "Ва-банк выше этой суммы будет отклонён."
         )
         return
 
@@ -2508,11 +2508,18 @@ async def casino_command(event) -> None:
             )
             return
         if bet_status == "limit":
-            await event.reply(
-                "Ставка превышает ваш максимум: "
-                f"{format_points(bet)} очков.\n"
-                "Изменить ограничение: `каз макс Х`; снять: `каз макс нет`."
-            )
+            if all_in:
+                await event.reply(
+                    "Сумма ва-банка выше установленного лимита: "
+                    f"{format_points(bet)}."
+                )
+            else:
+                await event.reply(
+                    "Ставка превышает ваш максимум: "
+                    f"{format_points(bet)} очков.\n"
+                    "Изменить ограничение: `каз макс Х`; "
+                    "снять: `каз макс нет`."
+                )
             return
 
         try:

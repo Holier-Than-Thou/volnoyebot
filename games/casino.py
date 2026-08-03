@@ -22,16 +22,13 @@ def resolve_bet_amount(
 ) -> tuple[str, int]:
     """Применить персональный предел к обычной ставке или ва-банку.
 
-    Для обычной ставки превышение возвращается отдельным статусом. Ва-банк
-    автоматически ограничивается меньшим из баланса и заданного предела.
+    И обычная ставка, и ва-банк возвращают отдельный статус при превышении.
     """
     actual_bet = balance if requested_bet is None else requested_bet
     if max_bet is None:
         return "ok", actual_bet
     if max_bet <= 0:
         raise ValueError("Максимальная ставка должна быть положительной")
-    if requested_bet is None:
-        return "ok", min(actual_bet, max_bet)
     if actual_bet > max_bet:
         return "limit", max_bet
     return "ok", actual_bet
