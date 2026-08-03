@@ -193,6 +193,42 @@ await page.screenshot({
   path: join(outputPath, "mobile-idle-classic.png"),
   fullPage: true,
 });
+
+await page.evaluate(() => { Math.random = () => 0; });
+await page.locator("#cast-button").click();
+await page.clock.runFor(1000 + 2100);
+const classicFight = await page.locator("#fisher").evaluate((element) => {
+  const style = getComputedStyle(element);
+  return {
+    animationName: style.animationName,
+    backgroundImage: style.backgroundImage,
+    state: document.querySelector("#lake-scene")?.getAttribute("data-state"),
+  };
+});
+if (
+  classicFight.state !== "playing"
+  || classicFight.animationName !== "fisher-fight-classic"
+  || !classicFight.backgroundImage.includes("fisher-fight-classic.png")
+) {
+  throw new Error("Двухкадровая анимация обычной удочки не запустилась");
+}
+await page.locator("#fisher").evaluate((element) => {
+  element.style.animation = "none";
+  element.style.backgroundPositionX = "0";
+});
+await page.screenshot({
+  path: join(outputPath, "mobile-classic-fight-medium.png"),
+  fullPage: true,
+});
+await page.locator("#fisher").evaluate((element) => {
+  element.style.backgroundPositionX = "100%";
+});
+await page.screenshot({
+  path: join(outputPath, "mobile-classic-fight-strong.png"),
+  fullPage: true,
+});
+
+await page.reload();
 await page.locator('[data-rod-option="professional"]').click();
 await page.screenshot({
   path: join(outputPath, "mobile-idle.png"),
