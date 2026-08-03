@@ -203,7 +203,7 @@ const mobileLayout = await page.evaluate(() => {
   const seatStyle = getComputedStyle(seatElement);
   return {
     fisherInside:
-      fisher.left >= scene.left - fisher.width * .15
+      fisher.left >= scene.left - fisher.width * .25
       && fisher.right <= scene.right,
     sharedAnchor:
       fisherStyle.left === seatStyle.left
@@ -250,7 +250,7 @@ const narrowLayout = await page.evaluate(() => {
   return {
     noHorizontalOverflow: document.documentElement.scrollWidth <= innerWidth,
     fisherInside:
-      fisher.left >= scene.left - fisher.width * .15
+      fisher.left >= scene.left - fisher.width * .25
       && fisher.right <= scene.right,
   };
 });

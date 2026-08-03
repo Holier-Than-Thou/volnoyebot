@@ -248,10 +248,12 @@ const sceneArtwork = {
   fisherAnchorX: 261,
   fisherAnchorY: 856.5,
   fisherWidth: 414,
-  compactFisherAnchorX: 590,
+  compactBackgroundFocusX: 437,
+  compactFisherAnchorX: 515,
   compactFisherAnchorY: 755,
   compactFisherWidth: 340,
   bobberX: 890,
+  compactBobberX: 1040,
   bobberY: 572,
   ringsY: 615,
 };
@@ -282,8 +284,7 @@ function updateSceneLayout(): void {
   const fisherWidth = compact
     ? sceneArtwork.compactFisherWidth
     : sceneArtwork.fisherWidth;
-  const compactCropSourceX = fisherAnchorX
-    - fisherWidth * .45
+  const compactCropSourceX = sceneArtwork.compactBackgroundFocusX
     - visibleArtworkWidth * .02;
   const cropSourceX = compact
     ? Math.min(Math.max(0, compactCropSourceX), availableHorizontalCrop)
@@ -291,8 +292,8 @@ function updateSceneLayout(): void {
   const offsetX = -cropSourceX * scale;
   const bobberX = compact
     ? Math.min(
-        sceneArtwork.bobberX,
-        cropSourceX + visibleArtworkWidth * 0.8,
+        sceneArtwork.compactBobberX,
+        cropSourceX + visibleArtworkWidth * .88,
       )
     : sceneArtwork.bobberX;
 
