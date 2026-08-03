@@ -177,15 +177,24 @@ const spriteSources: Record<RodKind, string[]> = {
     assetUrl("assets/fishing/fisher-idle-body.png"),
     assetUrl("assets/fishing/fisher-cast-rod.png"),
     assetUrl("assets/fishing/fisher-cast-body.png"),
+    assetUrl("assets/fishing/fisher-fight-classic.png"),
   ],
   bamboo: [
     assetUrl("assets/fishing/fisher-idle-bamboo.png"),
     assetUrl("assets/fishing/fisher-cast-bamboo.png"),
+    assetUrl("assets/fishing/fisher-fight-bamboo.png"),
   ],
   professional: [
     assetUrl("assets/fishing/fisher-idle-professional.png"),
     assetUrl("assets/fishing/fisher-cast-professional.png"),
+    assetUrl("assets/fishing/fisher-fight-professional.png"),
   ],
+};
+
+const fightLineAnchors: Record<RodKind, { x: number; y: number }> = {
+  classic: { x: 0.895, y: 0.319 },
+  bamboo: { x: 0.977, y: 0.3 },
+  professional: { x: 0.998, y: 0.242 },
 };
 
 const spriteLoads = new Map<string, Promise<void>>();
@@ -403,16 +412,19 @@ function updateFishingLine(): void {
   const sceneRect = scene.getBoundingClientRect();
   const fisherRect = fisher.getBoundingClientRect();
   const bobberRect = lakeBobber.getBoundingClientRect();
-  const fightingClassic = state === "playing" && selectedRod === "classic";
+  const fighting = state === "playing";
+  const lineAnchor = fighting
+    ? fightLineAnchors[selectedRod]
+    : { x: 0.94, y: 0.28 };
   const startX = fisherRect.left - sceneRect.left
-    + fisherRect.width * (fightingClassic ? 0.895 : 0.94);
+    + fisherRect.width * lineAnchor.x;
   const startY = fisherRect.top - sceneRect.top
-    + fisherRect.height * (fightingClassic ? 0.319 : 0.28);
+    + fisherRect.height * lineAnchor.y;
   const endX = bobberRect.left - sceneRect.left + bobberRect.width / 2;
   const endY = bobberRect.top - sceneRect.top + 4;
   const controlX = (startX + endX) / 2;
   const midpointY = (startY + endY) / 2;
-  const sagDepth = fightingClassic
+  const sagDepth = fighting
     ? Math.min(24, Math.max(14, Math.abs(endX - startX) * 0.045))
     : Math.min(55, Math.max(30, Math.abs(endX - startX) * 0.1));
   const controlY = midpointY + sagDepth * 2;
