@@ -1059,19 +1059,6 @@ footer span {
     filter: drop-shadow(0 0 3px #d9ed7d);
   }
 
-  [data-state="playing"] .fisher[data-rod="classic"] {
-    background-image: url("/assets/fishing/fisher-fight-classic.png");
-    background-size: 200% 100%;
-    transform: translate(-36%, -3.6%);
-    transform-origin: 42% 87%;
-    animation: fisher-fight-classic .9s step-end infinite;
-  }
-
-  @keyframes fisher-fight-classic {
-    0%, 49.99% { background-position-x: 0; }
-    50%, 100% { background-position-x: 100%; }
-  }
-
   .catch-column small,
   .fish-mark {
     display: none;
