@@ -1059,6 +1059,52 @@ footer span {
     filter: drop-shadow(0 0 3px #d9ed7d);
   }
 
+  [data-state="playing"] .fisher {
+    transform-origin: 42% 87%;
+    animation:
+      fisher-idle .72s step-end infinite,
+      fisher-fight-classic .72s steps(3, end) infinite;
+  }
+
+  [data-state="playing"] .fisher[data-rod="bamboo"] {
+    animation:
+      fisher-idle .72s step-end infinite,
+      fisher-fight-bamboo .72s steps(3, end) infinite;
+  }
+
+  [data-state="playing"] .fisher[data-rod="professional"] {
+    animation:
+      fisher-idle .72s step-end infinite,
+      fisher-fight-professional .72s steps(3, end) infinite;
+  }
+
+  [data-state="playing"] .fishing-line-overlay path {
+    animation: fishing-line-tension .36s steps(2, end) infinite alternate;
+  }
+
+  @keyframes fisher-fight-classic {
+    0%, 100% { transform: translateX(-45%); }
+    34% { transform: translateX(-45%) translate(-2px, -1px); }
+    67% { transform: translateX(-45%) translate(-6px, 2px); }
+  }
+
+  @keyframes fisher-fight-bamboo {
+    0%, 100% { transform: translateX(-45%) scale(1.02); }
+    34% { transform: translateX(-45%) translate(-2px, -1px) scale(1.02); }
+    67% { transform: translateX(-45%) translate(-6px, 2px) scale(1.02); }
+  }
+
+  @keyframes fisher-fight-professional {
+    0%, 100% { transform: translateX(-45%) scale(.96); }
+    34% { transform: translateX(-45%) translate(-2px, -1px) scale(.96); }
+    67% { transform: translateX(-45%) translate(-6px, 2px) scale(.96); }
+  }
+
+  @keyframes fishing-line-tension {
+    from { stroke-width: 2; transform: translateY(0); }
+    to { stroke-width: 2.5; transform: translateY(-1px); }
+  }
+
   .catch-column small,
   .fish-mark {
     display: none;

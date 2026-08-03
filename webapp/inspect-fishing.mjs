@@ -185,6 +185,13 @@ if (
 ) {
   throw new Error("Выбор удочки не заблокирован во время ловли");
 }
+if (
+  (await page.locator("#fisher").evaluate((element) =>
+    getComputedStyle(element).animationName
+  )).includes("fisher-fight")
+) {
+  throw new Error("Мобильная анимация борьбы попала в десктопную компоновку");
+}
 
 await page.setViewportSize({ width: 390, height: 760 });
 await page.reload();
@@ -275,6 +282,38 @@ if (
   || compactMinigame.overlapsBobber
 ) {
   throw new Error("Мобильная шкала закрывает сцену или потеряла пиксельные маркеры");
+}
+
+for (const rod of ["classic", "bamboo", "professional"]) {
+  await page.reload();
+  await page.evaluate(() => { Math.random = () => 0; });
+  await page.locator(`[data-rod-option="${rod}"]`).click();
+  await page.locator("#cast-button").click();
+  await page.clock.runFor(1000 + 2100);
+
+  const animationName = await page.locator("#fisher").evaluate((element) =>
+    getComputedStyle(element).animationName
+  );
+  const transforms = [];
+  for (let phase = 0; phase < 4; phase += 1) {
+    transforms.push(await page.locator("#fisher").evaluate((element) =>
+      getComputedStyle(element).transform
+    ));
+    await page.clock.runFor(180);
+  }
+  if (
+    !animationName.includes(`fisher-fight-${rod}`)
+    || new Set(transforms).size < 2
+  ) {
+    throw new Error(
+      `Нет мобильной анимации вываживания для удочки ${rod}: `
+      + `${animationName}; ${transforms.join(" | ")}`,
+    );
+  }
+  await page.screenshot({
+    path: join(outputPath, `mobile-fighting-${rod}.png`),
+    fullPage: true,
+  });
 }
 
 await page.setViewportSize({ width: 480, height: 760 });

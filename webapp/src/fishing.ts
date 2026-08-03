@@ -380,7 +380,10 @@ function setState(nextState: GameState): void {
     castButton.disabled = false;
     castButton.innerHTML = "<span>Смотать удочку</span><small>прервать ожидание поклёвки</small>";
   } else if (nextState === "playing") {
-    setStatus("!", "Клюёт!", "Удерживайте маркер внутри зелёной зоны.");
+    const hint = window.matchMedia("(max-width: 760px)").matches
+      ? "Совмещайте крючок с движущейся рыбой."
+      : "Удерживайте маркер внутри зелёной зоны.";
+    setStatus("!", "Клюёт!", hint);
     castButton.disabled = true;
     castButton.innerHTML = "<span>Рыба на крючке</span><small>не дайте ей сорваться</small>";
   } else if (nextState === "caught") {
@@ -409,10 +412,9 @@ function updateFishingLine(): void {
   const endY = bobberRect.top - sceneRect.top + 4;
   const controlX = (startX + endX) / 2;
   const midpointY = (startY + endY) / 2;
-  const sagDepth = Math.min(
-    55,
-    Math.max(30, Math.abs(endX - startX) * 0.1),
-  );
+  const sagDepth = state === "playing"
+    ? Math.min(24, Math.max(14, Math.abs(endX - startX) * .045))
+    : Math.min(55, Math.max(30, Math.abs(endX - startX) * .1));
   const controlY = midpointY + sagDepth * 2;
 
   fishingLineOverlay.setAttribute(
