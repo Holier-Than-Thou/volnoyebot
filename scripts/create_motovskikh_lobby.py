@@ -19,6 +19,7 @@ import websocket
 
 BASE_URL = "https://motovskikh.ru"
 WS_BASE_URL = "wss://motovskikh.ru/api/wsup/v1/map"
+WS_PATH = "/api/wsup/v1/map"
 DEFAULT_EMAIL = "evilomom@gmail.com"
 DEFAULT_NICKNAME = "Тестовый бот"
 PRIVATE_ROOM_ID_LENGTH = 11
@@ -164,10 +165,14 @@ def load_session() -> tuple[urllib.request.OpenerDirector, http.cookiejar.Mozill
 
 
 def websocket_cookie_header(cookies: http.cookiejar.CookieJar) -> str:
+    now = time.time()
     return "; ".join(
         f"{cookie.name}={cookie.value}"
         for cookie in cookies
         if cookie.domain.lstrip(".") == "motovskikh.ru"
+        and cookie.secure
+        and not cookie.is_expired(now)
+        and WS_PATH.startswith(cookie.path)
     )
 
 
@@ -176,6 +181,23 @@ def send_action(socket: websocket.WebSocket, action: str, data: object = None) -
     if data is not None:
         message["d"] = data
     socket.send(json.dumps(message, ensure_ascii=False))
+
+
+def initialize_room(
+    opener: urllib.request.OpenerDirector,
+    test_slug: str,
+    room_id: str,
+) -> None:
+    post_json(
+        opener,
+        "/api/v2/get_map",
+        {
+            "name": test_slug,
+            "language": "ru",
+            "room": room_id,
+            "workshop": test_slug.startswith("workshop/"),
+        },
+    )
 
 
 def observe_room(
@@ -255,6 +277,7 @@ def main() -> None:
 
     room_id = create_private_room_id()
     room_url = create_private_lobby_url(test_slug, room_id)
+    initialize_room(opener, test_slug, room_id)
     print(f"Адрес приватной комнаты: {room_url}")
     observe_room(test_slug, room_id, args.nickname, cookies)
 

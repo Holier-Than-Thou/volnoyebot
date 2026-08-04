@@ -1,9 +1,11 @@
 import unittest
+from http.cookiejar import Cookie, CookieJar
 from unittest.mock import patch
 
 from scripts.create_motovskikh_lobby import (
     create_private_lobby_url,
     extract_verification_code,
+    websocket_cookie_header,
 )
 
 
@@ -33,6 +35,32 @@ class CreateMotovskikhLobbyTests(unittest.TestCase):
     def test_rejects_magic_link_from_another_host(self) -> None:
         with self.assertRaises(ValueError):
             extract_verification_code("https://example.com/verify/?code=secret")
+
+    def test_websocket_cookie_header_respects_cookie_path(self) -> None:
+        cookies = CookieJar()
+        for name, path in (("access", "/"), ("refresh", "/api/v1/auth/refresh")):
+            cookies.set_cookie(
+                Cookie(
+                    version=0,
+                    name=name,
+                    value="value",
+                    port=None,
+                    port_specified=False,
+                    domain="motovskikh.ru",
+                    domain_specified=False,
+                    domain_initial_dot=False,
+                    path=path,
+                    path_specified=True,
+                    secure=True,
+                    expires=None,
+                    discard=True,
+                    comment=None,
+                    comment_url=None,
+                    rest={},
+                )
+            )
+
+        self.assertEqual(websocket_cookie_header(cookies), "access=value")
 
 
 if __name__ == "__main__":
