@@ -19,10 +19,14 @@ from telethon import TelegramClient, events
 from telethon.tl import types
 from telethon.tl.types import Channel, Chat, MessageMediaDice, User
 
-from games import casino, dice, farm, guess_sound, museum
+from games import casino, dice, farm, guess_sound, motovskikh_link, museum
 from games.farm_storage import FarmStoreMixin, initialize_farm_schema
 from games.guess_sound.freesound import FreesoundProvider
 from games.museum_storage import MuseumStoreMixin, initialize_museum_schema
+from games.motovskikh_storage import (
+    MotovskikhStoreMixin,
+    initialize_motovskikh_schema,
+)
 from games.release import (
     RELEASE_ID,
     RELEASE_SUMMARY,
@@ -57,6 +61,17 @@ SESSION_NAME = os.getenv("SESSION_NAME", "casino_bot").strip()
 INITIAL_BALANCE = env_int("INITIAL_BALANCE", 1000)
 MIN_BET = env_int("MIN_BET", 1)
 FREESOUND_API_KEY = os.getenv("FREESOUND_API_KEY", "").strip()
+MOTOVSKIKH_DEFAULT_DATA_DIR = (
+    DATA_DIR if os.getenv("DATA_DIR") else BASE_DIR / "data"
+)
+MOTOVSKIKH_COOKIE_PATH = Path(
+    os.getenv(
+        "MOTOVSKIKH_COOKIE_PATH",
+        MOTOVSKIKH_DEFAULT_DATA_DIR / "motovskikh.cookies.txt",
+    )
+)
+MOTOVSKIKH_LINK_TTL_SECONDS = env_int("MOTOVSKIKH_LINK_TTL_SECONDS", 300)
+MOTOVSKIKH_MAX_LINK_ATTEMPTS = env_int("MOTOVSKIKH_MAX_LINK_ATTEMPTS", 10)
 
 if not API_HASH:
     raise RuntimeError("В .env не задан API_HASH")
@@ -66,6 +81,8 @@ if ADMIN_ID <= 0:
     raise RuntimeError("В .env должен быть указан положительный ADMIN_ID")
 if INITIAL_BALANCE < 0 or MIN_BET <= 0:
     raise RuntimeError("Проверьте INITIAL_BALANCE и MIN_BET в .env")
+if MOTOVSKIKH_LINK_TTL_SECONDS <= 0 or MOTOVSKIKH_MAX_LINK_ATTEMPTS <= 0:
+    raise RuntimeError("Проверьте настройки привязки Motovskikh в .env")
 
 
 DEFAULT_BET_COOLDOWN_SECONDS = 20
@@ -90,7 +107,12 @@ ASSETS = {
 HELP_TEXT = casino.help_text(MIN_BET)
 
 
-class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
+class BalanceStore(
+    FarmStoreMixin,
+    MotovskikhStoreMixin,
+    MuseumStoreMixin,
+    ReleaseStoreMixin,
+):
     """Небольшое SQLite-хранилище балансов по чату и пользователю."""
 
     def __init__(self, path: Path) -> None:
@@ -107,6 +129,7 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
                 last_bet_at REAL NOT NULL DEFAULT 0,
                 last_command_at REAL NOT NULL DEFAULT 0,
                 first_command_at REAL,
+                max_bet INTEGER CHECK (max_bet IS NULL OR max_bet > 0),
                 PRIMARY KEY (chat_id, user_id)
             )
             """
@@ -155,6 +178,12 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
         if "first_command_at" not in columns:
             self.connection.execute(
                 "ALTER TABLE balances ADD COLUMN first_command_at REAL"
+            )
+        if "max_bet" not in columns:
+            self.connection.execute(
+                "ALTER TABLE balances "
+                "ADD COLUMN max_bet INTEGER "
+                "CHECK (max_bet IS NULL OR max_bet > 0)"
             )
         self.connection.execute(
             """
@@ -327,6 +356,7 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
             """
         )
         initialize_farm_schema(self.connection)
+        initialize_motovskikh_schema(self.connection)
         initialize_museum_schema(self.connection)
         initialize_release_schema(self.connection)
         self.connection.commit()
@@ -533,6 +563,42 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
             ).fetchone()
             return int(row["balance"])
 
+    async def get_max_bet(self, chat_id: int, user_id: int) -> int | None:
+        """Вернуть персональный предел ставки казино, если он установлен."""
+        async with self.lock:
+            row = self.connection.execute(
+                "SELECT max_bet FROM balances WHERE chat_id = ? AND user_id = ?",
+                (chat_id, user_id),
+            ).fetchone()
+            if row is None or row["max_bet"] is None:
+                return None
+            return int(row["max_bet"])
+
+    async def set_max_bet(
+        self,
+        chat_id: int,
+        user_id: int,
+        display_name: str,
+        max_bet: int | None,
+    ) -> None:
+        """Установить или снять персональный предел ставки казино."""
+        if max_bet is not None and max_bet <= 0:
+            raise ValueError("Максимальная ставка должна быть положительной")
+        async with self.lock:
+            self.connection.execute(
+                """
+                INSERT INTO balances(
+                    chat_id, user_id, display_name, balance, max_bet
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    max_bet = excluded.max_bet
+                """,
+                (chat_id, user_id, display_name, INITIAL_BALANCE, max_bet),
+            )
+            self.connection.commit()
+
     async def mark_command_activity(
         self,
         chat_id: int,
@@ -679,7 +745,7 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
             )
             row = self.connection.execute(
                 """
-                SELECT balance, last_bet_at FROM balances
+                SELECT balance, last_bet_at, max_bet FROM balances
                 WHERE chat_id = ? AND user_id = ?
                 """,
                 (chat_id, user_id),
@@ -697,12 +763,19 @@ class BalanceStore(FarmStoreMixin, MuseumStoreMixin, ReleaseStoreMixin):
                 if cooldown_row is None
                 else int(cooldown_row["bet_cooldown_seconds"])
             )
+            limit_status, actual_bet = casino.resolve_bet_amount(
+                int(row["balance"]),
+                bet,
+                None if row["max_bet"] is None else int(row["max_bet"]),
+            )
+            if limit_status == "limit":
+                self.connection.commit()
+                return "limit", int(row["balance"]), 0, actual_bet
+
             remaining = cooldown_seconds - (now - row["last_bet_at"])
             if not ignore_cooldown and remaining > 0:
                 self.connection.commit()
                 return "cooldown", int(row["balance"]), remaining, 0
-
-            actual_bet = int(row["balance"]) if bet is None else bet
             if actual_bet <= 0 or row["balance"] < actual_bet:
                 self.connection.commit()
                 return "insufficient", int(row["balance"]), 0, 0
@@ -1786,6 +1859,12 @@ bot_username = ""
 cleanup_tasks: set[asyncio.Task] = set()
 
 
+def track_background_task(task: asyncio.Task) -> None:
+    """Keep a background task alive until it finishes."""
+    cleanup_tasks.add(task)
+    task.add_done_callback(cleanup_tasks.discard)
+
+
 def telegram_mention(user_id: int, display_name_value: str) -> str:
     """Сформировать Markdown-упоминание пользователя без username."""
     safe_name = re.sub(r"([\\\[\]])", r"\\\1", display_name_value)
@@ -1953,6 +2032,11 @@ def is_bot_command(text: str) -> bool:
 async def activation_gate(event) -> None:
     """Не пропускать события чата до явной активации администратором."""
     if not event.is_group:
+        if re.match(
+            r"(?i)^/motovskikh_auth(?:@\w+)?\s*$",
+            event.raw_text or "",
+        ):
+            return
         raise events.StopPropagation
     if casino.is_forwarded_message(event.message):
         raise events.StopPropagation
@@ -2160,6 +2244,50 @@ async def casino_command(event) -> None:
             f"💰 {target_name}: {balance} очков\n"
             f"🥇 Золото: {gold}\n"
             f"Ресурсы: {asset_icons or 'нет'}"
+        )
+        return
+
+    if command == "макс":
+        if not args:
+            max_bet = await store.get_max_bet(chat_id, sender.id)
+            if max_bet is None:
+                await event.reply("🎚 Максимальная ставка не ограничена.")
+            else:
+                await event.reply(
+                    "🎚 Максимальная ставка: "
+                    f"{format_points(max_bet)} очков."
+                )
+            return
+        if len(args) != 1:
+            await event.reply(
+                "Формат: `каз макс 1000`; снять ограничение — "
+                "`каз макс нет` или `каз макс 0`."
+            )
+            return
+
+        raw_limit = args[0].casefold()
+        if raw_limit in {"нет", "0"}:
+            await store.set_max_bet(chat_id, sender.id, name, None)
+            await event.reply("🎚 Ограничение максимальной ставки снято.")
+            return
+        try:
+            max_bet = int(raw_limit)
+        except ValueError:
+            await event.reply("Максимальная ставка должна быть целым числом.")
+            return
+        if max_bet < MIN_BET:
+            await event.reply(
+                f"Максимальная ставка должна быть не меньше {MIN_BET}."
+            )
+            return
+        if max_bet > 9_223_372_036_854_775_807:
+            await event.reply("Указана слишком большая максимальная ставка.")
+            return
+        await store.set_max_bet(chat_id, sender.id, name, max_bet)
+        await event.reply(
+            "🎚 Максимальная ставка установлена: "
+            f"{format_points(max_bet)} очков.\n"
+            "Ва-банк выше этой суммы будет отклонён."
         )
         return
 
@@ -2412,6 +2540,20 @@ async def casino_command(event) -> None:
             await event.reply(
                 f"Недостаточно очков. Текущий баланс: {balance_after_bet}."
             )
+            return
+        if bet_status == "limit":
+            if all_in:
+                await event.reply(
+                    "Сумма ва-банка выше установленного лимита: "
+                    f"{format_points(bet)}."
+                )
+            else:
+                await event.reply(
+                    "Ставка превышает ваш максимум: "
+                    f"{format_points(bet)} очков.\n"
+                    "Изменить ограничение: `каз макс Х`; "
+                    "снять: `каз макс нет`."
+                )
             return
 
         try:
@@ -2707,6 +2849,14 @@ restore_dice_expirations = dice.register(
 casino.register(client, casino_command)
 farm.register(client, direct_farm_command, store, display_name)
 museum.register(client, direct_museum_command)
+motovskikh_link.register(
+    client,
+    store,
+    MOTOVSKIKH_COOKIE_PATH,
+    track_background_task,
+    MOTOVSKIKH_LINK_TTL_SECONDS,
+    MOTOVSKIKH_MAX_LINK_ATTEMPTS,
+)
 guess_sound.register(
     client,
     FreesoundProvider(FREESOUND_API_KEY),

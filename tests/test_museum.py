@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from games import museum
 from games.museum_storage import (
+    MAX_MUSEUM_DAILY_INCOME,
     MUSEUM_INCOME_INTERVAL_SECONDS,
     MuseumStoreMixin,
     initialize_museum_schema,
@@ -21,6 +22,7 @@ class MuseumRulesTests(unittest.TestCase):
         self.assertIn("9 000 × 2 = 18 000 очков/сутки", text)
         self.assertIn("музей создать Хз Б/Г/В", text)
         self.assertIn("Большая статуя за 10 🥇", text)
+        self.assertIn("не более 300 000 очков", text)
 
     def test_all_in_gold_except_exactly_two_sevens(self) -> None:
         self.assertEqual(
@@ -172,6 +174,43 @@ class MuseumStorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             balance,
             1000 + snapshot["daily_income"],
+        )
+
+    async def test_daily_income_is_capped_without_changing_statues(self) -> None:
+        now = time.time()
+        self.store._ensure_museum_account_unlocked(1, 10, now)
+        self.store.connection.executemany(
+            """
+            INSERT INTO museum_statues(
+                chat_id, user_id, size_code, quality, color,
+                gold_spent, base_roll, bonus, score,
+                income_per_day, created_at
+            )
+            VALUES (1, 10, 'В', 'Шедевр', '🟨', 100, 100, 99, 199, 200000, ?)
+            """,
+            ((now,), (now,)),
+        )
+        self.store.connection.execute(
+            """
+            UPDATE museum_accounts SET income_updated_at = ?
+            WHERE chat_id = 1 AND user_id = 10
+            """,
+            (now - MUSEUM_INCOME_INTERVAL_SECONDS - 1,),
+        )
+        self.store.connection.commit()
+
+        snapshot = await self.store.get_museum(1, 10)
+        balance = self.store.connection.execute(
+            "SELECT balance FROM balances WHERE chat_id = 1 AND user_id = 10"
+        ).fetchone()["balance"]
+
+        self.assertEqual(snapshot["raw_daily_income"], 400_000)
+        self.assertEqual(snapshot["daily_income"], MAX_MUSEUM_DAILY_INCOME)
+        self.assertEqual(balance, 1000 + MAX_MUSEUM_DAILY_INCOME)
+        self.assertEqual(len(snapshot["statues"]), 2)
+        self.assertEqual(
+            [statue["income_per_day"] for statue in snapshot["statues"]],
+            [200_000, 200_000],
         )
 
     async def test_legacy_low_quality_statue_is_ignored(self) -> None:

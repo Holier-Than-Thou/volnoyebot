@@ -7,6 +7,28 @@ from games import casino
 
 
 class CasinoRulesTest(unittest.TestCase):
+    def test_explicit_bet_above_personal_limit_is_rejected(self) -> None:
+        self.assertEqual(
+            casino.resolve_bet_amount(10_000, 2_000, 1_000),
+            ("limit", 1_000),
+        )
+
+    def test_all_in_above_personal_limit_is_rejected(self) -> None:
+        self.assertEqual(
+            casino.resolve_bet_amount(10_000, None, 1_000),
+            ("limit", 1_000),
+        )
+        self.assertEqual(
+            casino.resolve_bet_amount(500, None, 1_000),
+            ("ok", 500),
+        )
+
+    def test_bet_is_unchanged_without_personal_limit(self) -> None:
+        self.assertEqual(
+            casino.resolve_bet_amount(10_000, None, None),
+            ("ok", 10_000),
+        )
+
     def test_forwarded_messages_are_detected_from_telegram_metadata(self) -> None:
         self.assertTrue(
             casino.is_forwarded_message(

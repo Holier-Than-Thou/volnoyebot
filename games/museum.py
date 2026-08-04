@@ -172,6 +172,12 @@ def format_museum(owner_name: str, snapshot: dict) -> str:
         "Доход: "
         f"{format_points(snapshot['daily_income'], signed=True)} очков/сутки",
     ]
+    if snapshot["raw_daily_income"] > snapshot["daily_income"]:
+        lines.append(
+            "Сумма доходов статуй: "
+            f"{format_points(snapshot['raw_daily_income'])} очков/сутки; "
+            "начисление ограничено 300 000."
+        )
     if not snapshot["statues"]:
         lines.append("\nЭкспозиция пока пуста.")
     else:
@@ -229,6 +235,8 @@ def help_text() -> str:
 
 Доход музея
   Доходы всех статуй складываются и начисляются за каждые завершённые сутки.
+  За одни сутки музей может начислить не более 300 000 очков. Статуи и их
+  собственные характеристики при достижении лимита не изменяются.
   Статуи нельзя удалить вручную.
 
 Команды
