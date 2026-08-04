@@ -25,6 +25,7 @@ COMMAND_PATTERN = re.compile(
 )
 BARE_PATTERN = re.compile(rf"(?iu)^\s*{PREFIX}\s*$")
 NAME_PATTERN = re.compile(r"(?u)^[^\s@/]{1,32}$")
+MENTION_PATTERN = re.compile(r"(?u)(?<!\S)@([^\s@/]{1,32})")
 
 HELP_SUBCOMMANDS = {"помощь", "справка"}
 LIST_SUBCOMMANDS = {"список", "игроки"}
@@ -46,7 +47,13 @@ HELP_TEXT = (
     f"`{PREFIX} Вася ферма собрать`\n\n"
     "Ответ на сообщение с командой персоны адресует ей другую команду: "
     "ответьте на него `кости 500`, чтобы вызвать персону на игру, или "
-    "`каз дать 100`, чтобы передать ей очки."
+    "`каз дать 100`, чтобы передать ей очки.\n\n"
+    "Дуэль между персонами вызывается по имени соперника:\n"
+    f"`{PREFIX} Вася мот 100 @Петя <ссылка на тест>`\n\n"
+    "Привязка аккаунта Motovskikh для персоны — в личном чате с ботом:\n"
+    f"`{PREFIX} Вася /motovskikh_auth`\n"
+    "Там же можно указать персону её идентификатором, если одно имя занято "
+    "в нескольких чатах."
 )
 
 
@@ -171,6 +178,61 @@ def get_actor(message) -> User | None:
     return getattr(message, "emulated_actor", None)
 
 
+def has_prefix(text: str) -> bool:
+    """Проверить, что сообщение адресовано подсистеме эмуляции."""
+    return parse_command(text) is not None
+
+
+def parse_player_id(token: str) -> int | None:
+    """Распознать ссылку на персону по её числовому идентификатору."""
+    try:
+        value = int(token)
+    except ValueError:
+        return None
+    return value if is_emulated(value) else None
+
+
+async def resolve_persona(store, chat_id: int | None, token: str):
+    """Найти персону по имени или идентификатору.
+
+    В групповом чате поиск идёт только среди персон этого чата. В личном чате
+    с ботом чата нет, поэтому имя ищется во всех чатах и должно быть
+    однозначным; неоднозначность разрешается числовым идентификатором.
+    """
+    player_id = parse_player_id(token)
+    if player_id is not None:
+        row = await store.find_emulated_player_by_id(player_id)
+        if row is None:
+            return "missing", []
+        if chat_id is not None and row["chat_id"] != chat_id:
+            return "missing", []
+        return "found", [row]
+
+    if chat_id is not None:
+        row = await store.get_emulated_player_by_name(chat_id, token)
+        return ("found", [row]) if row is not None else ("missing", [])
+
+    rows = await store.find_emulated_players_by_name(token)
+    if not rows:
+        return "missing", []
+    if len(rows) > 1:
+        return "ambiguous", rows
+    return "found", rows
+
+
+async def mentioned_persona(store, chat_id: int, text: str) -> User | None:
+    """Найти персону, упомянутую в команде как «@Имя».
+
+    Telegram не создаёт сущность упоминания для кириллических имён, поэтому
+    текст разбирается самостоятельно.
+    """
+    for name in MENTION_PATTERN.findall(text or ""):
+        row = await store.get_emulated_player_by_name(chat_id, name)
+        if row is not None:
+            return emulated_user(row["user_id"], row["name"])
+    return None
+
+
 async def event_sender(event):
     """Получить действующее лицо команды: персону либо реального автора."""
     actor = get_actor(event.message)
@@ -187,7 +249,9 @@ async def message_sender(store, chat_id: int, message):
     return await message.get_sender()
 
 
-async def handle_prefix(event, store, admin_id: int, sender) -> InterceptResult:
+async def handle_prefix(
+    event, store, admin_id: int, sender, private: bool = False
+) -> InterceptResult:
     """Обработать префикс «эмул» до того, как сработают команды игр."""
     parsed = parse_command(event.raw_text or "")
     if parsed is None:
@@ -195,6 +259,14 @@ async def handle_prefix(event, store, admin_id: int, sender) -> InterceptResult:
 
     if not isinstance(sender, User) or sender.id != admin_id:
         await event.reply("Эмуляция игроков доступна только администратору.")
+        return InterceptResult(stop=True)
+
+    # Персоны создаются в конкретном чате, поэтому реестром управляют оттуда.
+    if private and parsed.kind in {"list", "create", "delete"}:
+        await event.reply(
+            "Управление персонами доступно в групповом чате. "
+            f"Здесь работает только `{PREFIX} <имя> <команда>`."
+        )
         return InterceptResult(stop=True)
 
     if parsed.kind == "help":
@@ -234,19 +306,32 @@ async def handle_prefix(event, store, admin_id: int, sender) -> InterceptResult:
             )
         return InterceptResult(stop=True)
 
-    row = await store.get_emulated_player_by_name(event.chat_id, parsed.name)
-    if row is None:
+    chat_id = None if private else event.chat_id
+    status, rows = await resolve_persona(store, chat_id, parsed.name)
+    if status == "missing":
+        hint = (
+            f"Создайте её командой `{PREFIX} создать {parsed.name}` "
+            "в групповом чате."
+            if private
+            else f"Создайте её командой `{PREFIX} создать {parsed.name}`."
+        )
+        await event.reply(f"Персона {parsed.name} не найдена. {hint}")
+        return InterceptResult(stop=True)
+    if status == "ambiguous":
+        listed = ", ".join(f"`{row['user_id']}`" for row in rows)
         await event.reply(
-            f"Персона {parsed.name} не найдена. "
-            f"Создайте её командой `{PREFIX} создать {parsed.name}`."
+            f"Персона с именем {parsed.name} есть в нескольких чатах. "
+            f"Укажите её идентификатор: {listed}."
         )
         return InterceptResult(stop=True)
 
+    row = rows[0]
     actor = emulated_user(row["user_id"], row["name"])
     rewrite_message(event.message, parsed)
-    # Ответ на это сообщение адресует команду персоне, а не администратору.
-    await store.bind_emulated_message(
-        event.chat_id, event.message.id, actor.id
-    )
+    if not private:
+        # Ответ на это сообщение адресует команду персоне, а не администратору.
+        await store.bind_emulated_message(
+            event.chat_id, event.message.id, actor.id
+        )
     set_actor(event.message, actor)
     return InterceptResult(actor=actor)

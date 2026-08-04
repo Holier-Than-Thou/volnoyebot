@@ -79,6 +79,16 @@ def admin() -> User:
     return User(id=ADMIN_ID, bot=False, first_name="Админ")
 
 
+class StoreTestCase(unittest.IsolatedAsyncioTestCase):
+    """Общая база для проверок, которым нужно хранилище персон."""
+
+    async def asyncSetUp(self) -> None:
+        self.store = TestStore()
+
+    async def asyncTearDown(self) -> None:
+        self.store.connection.close()
+
+
 class ParseCommandTests(unittest.TestCase):
     def test_ordinary_message_is_not_emulation(self) -> None:
         self.assertIsNone(emulation.parse_command("каз баланс"))
@@ -186,9 +196,7 @@ class EmulatedIdentityTests(unittest.TestCase):
         self.assertEqual(user.first_name, "Вася")
 
 
-class EmulationStorageTests(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self) -> None:
-        self.store = TestStore()
+class EmulationStorageTests(StoreTestCase):
 
     async def test_players_get_unique_negative_identifiers(self) -> None:
         _, first = await self.store.create_emulated_player(CHAT_ID, "Вася")
@@ -269,9 +277,7 @@ class EmulationStorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(listed[0]["balance"], 700)
 
 
-class HandlePrefixTests(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self) -> None:
-        self.store = TestStore()
+class HandlePrefixTests(StoreTestCase):
 
     async def test_message_without_prefix_passes_through(self) -> None:
         event = FakeEvent("каз баланс")
@@ -351,6 +357,159 @@ class HandlePrefixTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(found.id, ADMIN_ID)
 
 
+class ResolvePersonaTests(StoreTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        _, self.local = await self.store.create_emulated_player(
+            CHAT_ID, "Вася"
+        )
+
+    async def test_name_is_resolved_inside_the_chat(self) -> None:
+        status, rows = await emulation.resolve_persona(
+            self.store, CHAT_ID, "вася"
+        )
+        self.assertEqual(status, "found")
+        self.assertEqual(rows[0]["user_id"], self.local["user_id"])
+
+    async def test_identifier_is_resolved(self) -> None:
+        status, rows = await emulation.resolve_persona(
+            self.store, CHAT_ID, str(self.local["user_id"])
+        )
+        self.assertEqual(status, "found")
+        self.assertEqual(rows[0]["user_id"], self.local["user_id"])
+
+    async def test_identifier_of_another_chat_is_not_visible(self) -> None:
+        _, other = await self.store.create_emulated_player(-77, "Петя")
+        status, _rows = await emulation.resolve_persona(
+            self.store, CHAT_ID, str(other["user_id"])
+        )
+        self.assertEqual(status, "missing")
+
+    async def test_identifier_works_without_chat_context(self) -> None:
+        _, other = await self.store.create_emulated_player(-77, "Петя")
+        status, rows = await emulation.resolve_persona(
+            self.store, None, str(other["user_id"])
+        )
+        self.assertEqual(status, "found")
+        self.assertEqual(rows[0]["user_id"], other["user_id"])
+
+    async def test_unique_name_resolves_without_chat_context(self) -> None:
+        status, rows = await emulation.resolve_persona(
+            self.store, None, "Вася"
+        )
+        self.assertEqual(status, "found")
+        self.assertEqual(rows[0]["user_id"], self.local["user_id"])
+
+    async def test_name_used_in_two_chats_is_ambiguous(self) -> None:
+        await self.store.create_emulated_player(-77, "Вася")
+        status, rows = await emulation.resolve_persona(
+            self.store, None, "Вася"
+        )
+        self.assertEqual(status, "ambiguous")
+        self.assertEqual(len(rows), 2)
+
+    async def test_unknown_name_is_missing(self) -> None:
+        status, _rows = await emulation.resolve_persona(
+            self.store, CHAT_ID, "Петя"
+        )
+        self.assertEqual(status, "missing")
+
+    async def test_real_identifier_is_treated_as_a_name(self) -> None:
+        self.assertIsNone(emulation.parse_player_id("702747511"))
+        self.assertIsNone(emulation.parse_player_id("Вася"))
+        self.assertEqual(
+            emulation.parse_player_id(str(PLAYER_ID_BASE - 5)),
+            PLAYER_ID_BASE - 5,
+        )
+
+
+class MentionedPersonaTests(StoreTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        _, self.persona = await self.store.create_emulated_player(
+            CHAT_ID, "Петя"
+        )
+
+    async def test_cyrillic_mention_is_resolved(self) -> None:
+        found = await emulation.mentioned_persona(
+            self.store, CHAT_ID, "мот 100 @Петя https://motovskikh.ru/тест/"
+        )
+        self.assertIsNotNone(found)
+        self.assertEqual(found.id, self.persona["user_id"])
+        self.assertEqual(found.first_name, "Петя")
+
+    async def test_unknown_mention_is_ignored(self) -> None:
+        self.assertIsNone(
+            await emulation.mentioned_persona(self.store, CHAT_ID, "мот @Вася")
+        )
+
+    async def test_at_sign_inside_a_word_is_not_a_mention(self) -> None:
+        self.assertIsNone(
+            await emulation.mentioned_persona(
+                self.store, CHAT_ID, "почта Петя@Петя"
+            )
+        )
+
+    async def test_persona_of_another_chat_is_ignored(self) -> None:
+        self.assertIsNone(
+            await emulation.mentioned_persona(self.store, -77, "мот @Петя")
+        )
+
+
+class PrivatePrefixTests(StoreTestCase):
+
+    async def test_registry_commands_are_group_only(self) -> None:
+        for text in ("эмул список", "эмул создать Вася", "эмул удалить Вася"):
+            with self.subTest(text=text):
+                event = FakeEvent(text)
+                result = await emulation.handle_prefix(
+                    event, self.store, ADMIN_ID, admin(), private=True
+                )
+                self.assertTrue(result.stop)
+                self.assertIn("групповом чате", event.replies[0])
+
+    async def test_persona_is_resolved_across_chats(self) -> None:
+        _, row = await self.store.create_emulated_player(-77, "Вася")
+        event = FakeEvent("эмул Вася /motovskikh_auth", message_id=12)
+        result = await emulation.handle_prefix(
+            event, self.store, ADMIN_ID, admin(), private=True
+        )
+
+        self.assertFalse(result.stop)
+        self.assertEqual(result.actor.id, row["user_id"])
+        self.assertEqual(event.raw_text, "/motovskikh_auth")
+        # Личный чат не принадлежит персоне, привязка сообщения не нужна.
+        self.assertIsNone(
+            await self.store.get_emulated_player_by_message(CHAT_ID, 12)
+        )
+
+    async def test_ambiguous_name_asks_for_identifier(self) -> None:
+        _, first = await self.store.create_emulated_player(-77, "Вася")
+        await self.store.create_emulated_player(-78, "Вася")
+        event = FakeEvent("эмул Вася /motovskikh_auth")
+        result = await emulation.handle_prefix(
+            event, self.store, ADMIN_ID, admin(), private=True
+        )
+
+        self.assertTrue(result.stop)
+        self.assertIn(str(first["user_id"]), event.replies[0])
+
+    async def test_persona_can_be_named_by_identifier(self) -> None:
+        _, row = await self.store.create_emulated_player(-77, "Вася")
+        event = FakeEvent(f"эмул {row['user_id']} /motovskikh_auth")
+        result = await emulation.handle_prefix(
+            event, self.store, ADMIN_ID, admin(), private=True
+        )
+
+        self.assertFalse(result.stop)
+        self.assertEqual(result.actor.id, row["user_id"])
+
+    async def test_has_prefix_detects_emulation_messages(self) -> None:
+        self.assertTrue(emulation.has_prefix("эмул Вася /motovskikh_auth"))
+        self.assertTrue(emulation.has_prefix("эмул"))
+        self.assertFalse(emulation.has_prefix("/motovskikh_auth"))
+
+
 def _returning(value):
     async def call():
         return value
@@ -358,9 +517,7 @@ def _returning(value):
     return call
 
 
-class FormatPlayersTests(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self) -> None:
-        self.store = TestStore()
+class FormatPlayersTests(StoreTestCase):
 
     async def test_empty_list_suggests_creating(self) -> None:
         rows = await self.store.list_emulated_players(CHAT_ID)

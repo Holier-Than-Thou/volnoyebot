@@ -14,6 +14,7 @@ import websocket
 from telethon import Button, events
 from telethon.tl.types import User
 
+from . import emulation
 from .motovskikh_client import (
     AuthenticationError,
     SESSION_LOCK,
@@ -50,6 +51,9 @@ class Candidate:
 @dataclass
 class LinkAttempt:
     user_id: int
+    # Чат для сообщений о ходе привязки. У обычного игрока совпадает с
+    # user_id, у эмулируемой персоны это личный чат администратора.
+    chat_id: int
     room_id: str
     room_url: str
     token: str
@@ -89,31 +93,48 @@ class MotovskikhLinkManager:
         self.attempt_ttl_seconds = attempt_ttl_seconds
         self.max_attempts = max_attempts
         self.attempts: dict[int, LinkAttempt] = {}
-        self.rebind_tokens: dict[str, tuple[int, float]] = {}
+        self.rebind_tokens: dict[str, tuple[int, int, float]] = {}
+
+    def attempt_for_token(self, chat_id: int, token: str) -> LinkAttempt | None:
+        """Найти попытку по кнопке: администратор ведёт и свои, и чужие."""
+        for attempt in self.attempts.values():
+            if attempt.chat_id == chat_id and attempt.token == token:
+                return attempt
+        return None
 
     async def handle_command(self, event) -> None:
         if not event.is_private:
             await event.reply("Эта команда работает только в личном чате с ботом.")
             return
-        sender = await event.get_sender()
+        sender = await emulation.event_sender(event)
         if not isinstance(sender, User) or sender.bot:
             return
+        subject = (
+            f"персоны {sender.first_name}"
+            if emulation.is_emulated(sender.id)
+            else "вас"
+        )
         if await self.store.has_active_wager(sender.id):
             await event.reply(
-                "Сейчас у вас есть активный игровой вызов или ставка. "
+                f"Сейчас у {subject} есть активный игровой вызов или ставка. "
                 "Завершите её перед привязкой аккаунта."
             )
             return
 
         existing = await self.store.get_motovskikh_link(sender.id)
         if existing is None:
-            await self.start_attempt(sender.id)
+            await self.start_attempt(sender.id, event.chat_id)
             return
 
         token = secrets.token_urlsafe(8)
-        self.rebind_tokens[token] = (sender.id, time.time() + 120)
+        self.rebind_tokens[token] = (sender.id, event.chat_id, time.time() + 120)
+        owner = (
+            f"К персоне {sender.first_name}"
+            if emulation.is_emulated(sender.id)
+            else "К вашему Telegram"
+        )
         await event.reply(
-            "К вашему Telegram уже привязан аккаунт Motovskikh "
+            f"{owner} уже привязан аккаунт Motovskikh "
             f"«{existing['last_nickname']}». Сменить привязанный аккаунт?",
             buttons=[
                 Button.inline("Сменить", data=f"mv:replace:{token}"),
@@ -128,11 +149,11 @@ class MotovskikhLinkManager:
             await event.answer("Некорректная кнопка.", alert=True)
             return
         _, action, token = parts
-        user_id = event.sender_id
+        chat_id = event.sender_id
 
         if action in {"replace", "cancel_replace"}:
             owner = self.rebind_tokens.pop(token, None)
-            if owner is None or owner[0] != user_id or owner[1] < time.time():
+            if owner is None or owner[1] != chat_id or owner[2] < time.time():
                 await event.answer("Кнопка устарела.", alert=True)
                 return
             await event.answer()
@@ -140,13 +161,14 @@ class MotovskikhLinkManager:
                 await event.edit("Привязка не изменена.", buttons=None)
                 return
             await event.edit("Создаю приватную комнату…", buttons=None)
-            await self.start_attempt(user_id)
+            await self.start_attempt(owner[0], chat_id)
             return
 
-        attempt = self.attempts.get(user_id)
-        if attempt is None or attempt.token != token:
+        attempt = self.attempt_for_token(chat_id, token)
+        if attempt is None:
             await event.answer("Попытка привязки уже завершена.", alert=True)
             return
+        user_id = attempt.user_id
         if attempt.expires_at < time.time():
             self.finish_attempt(attempt)
             await event.answer("Время привязки истекло.", alert=True)
@@ -186,26 +208,31 @@ class MotovskikhLinkManager:
                 buttons=None,
             )
         else:
+            owner = ""
+            if emulation.is_emulated(user_id):
+                player = await self.store.find_emulated_player_by_id(user_id)
+                if player is not None:
+                    owner = f" к персоне {player['name']}"
             await event.edit(
                 "✅ Аккаунт Motovskikh "
-                f"«{candidate.nickname}» (ID {candidate.player_id}) привязан.\n"
-                "Комнату можно закрыть.",
+                f"«{candidate.nickname}» (ID {candidate.player_id}) "
+                f"привязан{owner}.\nКомнату можно закрыть.",
                 buttons=None,
                 parse_mode=None,
             )
 
-    async def start_attempt(self, user_id: int) -> None:
+    async def start_attempt(self, user_id: int, chat_id: int) -> None:
         existing_attempt = self.attempts.get(user_id)
         if existing_attempt is not None:
             await self.client.send_message(
-                user_id,
-                "У вас уже есть активная попытка привязки.",
+                chat_id,
+                "Активная попытка привязки уже есть.",
                 buttons=[Button.url("Открыть комнату", existing_attempt.room_url)],
             )
             return
         if len(self.attempts) >= self.max_attempts:
             await self.client.send_message(
-                user_id,
+                chat_id,
                 "Сейчас слишком много одновременных привязок. "
                 "Попробуйте через несколько минут.",
             )
@@ -214,6 +241,7 @@ class MotovskikhLinkManager:
         room_id = create_private_room_id()
         attempt = LinkAttempt(
             user_id=user_id,
+            chat_id=chat_id,
             room_id=room_id,
             room_url=create_private_lobby_url(DEFAULT_TEST_SLUG, room_id),
             token=secrets.token_urlsafe(8),
@@ -221,8 +249,8 @@ class MotovskikhLinkManager:
         )
         self.attempts[user_id] = attempt
         await self.client.send_message(
-            user_id,
-            "Откройте приватную комнату и войдите в свой аккаунт Motovskikh.\n\n"
+            chat_id,
+            "Откройте приватную комнату и войдите в аккаунт Motovskikh.\n\n"
             "Если сайт попросит подтвердить email, после подтверждения снова "
             "откройте эту ссылку. Не пересылайте её другим людям.",
             buttons=[
@@ -243,7 +271,7 @@ class MotovskikhLinkManager:
             if self.attempts.get(attempt.user_id) is attempt:
                 self.finish_attempt(attempt)
                 await self.client.send_message(
-                    attempt.user_id,
+                    attempt.chat_id,
                     "Время привязки истекло. Запустите /motovskikh_auth ещё раз.",
                 )
             return
@@ -251,7 +279,7 @@ class MotovskikhLinkManager:
             if self.attempts.get(attempt.user_id) is attempt:
                 self.finish_attempt(attempt)
                 await self.client.send_message(
-                    attempt.user_id,
+                    attempt.chat_id,
                     "В комнату вошло несколько аккаунтов. Из соображений "
                     "безопасности привязка отменена; создайте новую комнату.",
                 )
@@ -260,7 +288,7 @@ class MotovskikhLinkManager:
             if self.attempts.get(attempt.user_id) is attempt:
                 self.finish_attempt(attempt)
                 await self.client.send_message(
-                    attempt.user_id,
+                    attempt.chat_id,
                     "Сервисная сессия сайта истекла. Привязка временно "
                     "недоступна; сообщите администратору бота.",
                 )
@@ -270,7 +298,7 @@ class MotovskikhLinkManager:
             if self.attempts.get(attempt.user_id) is attempt:
                 self.finish_attempt(attempt)
                 await self.client.send_message(
-                    attempt.user_id,
+                    attempt.chat_id,
                     "Не удалось подключиться к комнате Motovskikh. "
                     "Попробуйте позднее.",
                 )
@@ -280,7 +308,7 @@ class MotovskikhLinkManager:
             return
         attempt.candidate = candidate
         await self.client.send_message(
-            attempt.user_id,
+            attempt.chat_id,
             "Обнаружен аккаунт Motovskikh "
             f"«{candidate.nickname}» (ID {candidate.player_id}). Это ваш аккаунт?",
             buttons=[
@@ -293,7 +321,7 @@ class MotovskikhLinkManager:
         if self.attempts.get(attempt.user_id) is attempt:
             self.finish_attempt(attempt)
             await self.client.send_message(
-                attempt.user_id,
+                attempt.chat_id,
                 "Время подтверждения истекло. Привязка не изменена; "
                 "комнату можно закрыть.",
             )

@@ -177,6 +177,12 @@ async def resolve_target_user(
     mentioned = await resolve_mentioned_user(client, event)
     if mentioned is not None:
         return mentioned
+    # Персона упоминается «@Именем» и не является пользователем Telegram.
+    persona = await emulation.mentioned_persona(
+        store, event.chat_id, event.raw_text or ""
+    )
+    if persona is not None:
+        return persona
     if default_to_sender:
         sender = await emulation.event_sender(event)
         return sender if isinstance(sender, User) else None
@@ -258,6 +264,15 @@ class MotovskikhGameManager:
                 pass
 
     async def prompt_link(self, event, user: User) -> None:
+        if emulation.is_emulated(user.id):
+            name = self.display_name(user)
+            await event.reply(
+                f"У персоны {name} нет привязанного аккаунта Motovskikh. "
+                "Привяжите его в личном чате с ботом командой "
+                f"«эмул {name} /motovskikh_auth».",
+                parse_mode=None,
+            )
+            return
         text = (
             "Для участия привяжите аккаунт Motovskikh в личном чате: "
             "отправьте /motovskikh_auth."

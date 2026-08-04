@@ -171,6 +171,33 @@ class EmulationStoreMixin:
                 (chat_id, user_id),
             ).fetchone()
 
+    async def find_emulated_players_by_name(
+        self, name: str
+    ) -> list[sqlite3.Row]:
+        """Найти одноимённых персон во всех чатах — для личного чата с ботом."""
+        async with self.lock:
+            return self.connection.execute(
+                """
+                SELECT chat_id, user_id, name FROM emulated_players
+                WHERE name_key = ?
+                ORDER BY created_at
+                """,
+                (name_key(name),),
+            ).fetchall()
+
+    async def find_emulated_player_by_id(
+        self, user_id: int
+    ) -> sqlite3.Row | None:
+        """Найти персону по идентификатору без привязки к чату."""
+        async with self.lock:
+            return self.connection.execute(
+                """
+                SELECT chat_id, user_id, name FROM emulated_players
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            ).fetchone()
+
     async def bind_emulated_message(
         self, chat_id: int, message_id: int, user_id: int
     ) -> None:

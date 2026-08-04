@@ -2069,6 +2069,17 @@ def is_bot_command(text: str) -> bool:
 async def activation_gate(event) -> None:
     """Не пропускать события чата до явной активации администратором."""
     if not event.is_group:
+        if EMULATION_ENABLED and emulation.has_prefix(event.raw_text or ""):
+            # В личном чате префикс нужен для привязки аккаунтов персонам.
+            outcome = await emulation.handle_prefix(
+                event,
+                store,
+                admin_id,
+                await event.get_sender(),
+                private=True,
+            )
+            if outcome.stop:
+                raise events.StopPropagation
         if private_commands.is_private_slash_command(event.raw_text or ""):
             return
         raise events.StopPropagation

@@ -3,10 +3,19 @@ import sqlite3
 import time
 import unittest
 
+from telethon.tl.custom import Message
+from telethon.tl.types import PeerUser, User
+
+from games import emulation
+from games.emulation_storage import (
+    EmulationStoreMixin,
+    initialize_emulation_schema,
+)
 from games.motovskikh_game import (
     determine_outcome,
     parse_challenge_arguments,
     parse_test_url,
+    resolve_target_user,
     unexpected_online_player_ids,
 )
 from games.motovskikh_storage import (
@@ -249,6 +258,86 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
             ).fetchone()["status"],
             "interrupted",
         )
+
+
+class PersonaStore(EmulationStoreMixin):
+    def __init__(self) -> None:
+        self.connection = sqlite3.connect(":memory:")
+        self.connection.row_factory = sqlite3.Row
+        self.lock = asyncio.Lock()
+        initialize_emulation_schema(self.connection)
+
+
+class ChallengeEvent:
+    """Сообщение вызова без ответа на чужое сообщение."""
+
+    def __init__(self, text: str, chat_id: int) -> None:
+        self.message = Message(id=1, peer_id=PeerUser(10), message=text)
+        self.chat_id = chat_id
+
+    @property
+    def raw_text(self) -> str:
+        return self.message.message
+
+
+class FailingClient:
+    """У персоны нет аккаунта Telegram, поэтому упоминание не разрешается."""
+
+    async def get_entity(self, _value):
+        raise ValueError("no such user")
+
+
+class PersonaTargetTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.store = PersonaStore()
+        self.chat_id = -100500
+        _, self.persona = await self.store.create_emulated_player(
+            self.chat_id, "Петя"
+        )
+
+    async def asyncTearDown(self) -> None:
+        self.store.connection.close()
+
+    async def test_persona_is_challenged_by_name(self) -> None:
+        event = ChallengeEvent(
+            "мот 100 @Петя https://motovskikh.ru/тест/", self.chat_id
+        )
+
+        target = await resolve_target_user(FailingClient(), self.store, event)
+
+        self.assertIsInstance(target, User)
+        self.assertEqual(target.id, self.persona["user_id"])
+        self.assertEqual(target.first_name, "Петя")
+
+    async def test_unknown_name_leaves_target_undefined(self) -> None:
+        event = ChallengeEvent(
+            "мот 100 @Вася https://motovskikh.ru/тест/", self.chat_id
+        )
+
+        self.assertIsNone(
+            await resolve_target_user(FailingClient(), self.store, event)
+        )
+
+    async def test_persona_mention_does_not_break_argument_parsing(self) -> None:
+        arguments = parse_challenge_arguments(
+            "100 @Петя https://motovskikh.ru/moscow/"
+        )
+
+        self.assertEqual(arguments.stake, 100)
+        self.assertEqual(arguments.test_slug, "moscow")
+
+    async def test_sender_persona_is_used_for_info(self) -> None:
+        event = ChallengeEvent("мот инфо", self.chat_id)
+        actor = emulation.emulated_user(
+            self.persona["user_id"], self.persona["name"]
+        )
+        emulation.set_actor(event.message, actor)
+
+        target = await resolve_target_user(
+            FailingClient(), self.store, event, default_to_sender=True
+        )
+
+        self.assertIs(target, actor)
 
 
 if __name__ == "__main__":
