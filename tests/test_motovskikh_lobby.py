@@ -2,8 +2,8 @@ import unittest
 from unittest.mock import patch
 
 from scripts.create_motovskikh_lobby import (
-    build_magic_link,
     create_private_lobby_url,
+    extract_verification_code,
 )
 
 
@@ -18,27 +18,21 @@ class CreateMotovskikhLobbyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             create_private_lobby_url(" / ")
 
-    def test_builds_magic_link_from_code_with_special_characters(self) -> None:
-        link = build_magic_link("abc+/= &")
+    def test_accepts_code_with_special_characters(self) -> None:
+        code = extract_verification_code("abc+/= &")
 
-        self.assertEqual(
-            link,
-            "https://motovskikh.ru/verify/?code=abc%2B%2F%3D%20%26",
-        )
+        self.assertEqual(code, "abc+/= &")
 
     def test_extracts_code_from_full_magic_link_without_losing_plus(self) -> None:
-        link = build_magic_link(
+        code = extract_verification_code(
             "https://motovskikh.ru/verify/?code=abc+def%2Fghi%3D"
         )
 
-        self.assertEqual(
-            link,
-            "https://motovskikh.ru/verify/?code=abc%2Bdef%2Fghi%3D",
-        )
+        self.assertEqual(code, "abc+def/ghi=")
 
     def test_rejects_magic_link_from_another_host(self) -> None:
         with self.assertRaises(ValueError):
-            build_magic_link("https://example.com/verify/?code=secret")
+            extract_verification_code("https://example.com/verify/?code=secret")
 
 
 if __name__ == "__main__":

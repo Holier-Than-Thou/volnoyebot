@@ -81,7 +81,7 @@ def is_authenticated(opener: urllib.request.OpenerDirector) -> bool:
     return True
 
 
-def build_magic_link(code_or_link: str) -> str:
+def extract_verification_code(code_or_link: str) -> str:
     value = code_or_link.strip()
     if not value:
         raise ValueError("verification code must not be empty")
@@ -106,14 +106,35 @@ def build_magic_link(code_or_link: str) -> str:
         if not value:
             raise ValueError("magic link does not contain a verification code")
 
-    encoded_code = urllib.parse.quote(value, safe="")
-    return f"{BASE_URL}/verify/?code={encoded_code}"
+    return value
+
+
+def verify_or_register(
+    opener: urllib.request.OpenerDirector,
+    code: str,
+    nickname: str,
+) -> None:
+    try:
+        post_json(opener, "/api/v1/auth/verify", {"code": code})
+        return
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise RuntimeError("Код подтверждения недействителен или уже использован") from error
+        if error.code == 500:
+            raise RuntimeError("Сайт вернул внутреннюю ошибку при проверке кода") from error
+
+    post_json(
+        opener,
+        "/api/v1/auth/acquaint",
+        {"code": code, "nickname": nickname},
+    )
 
 
 def authenticate(
     opener: urllib.request.OpenerDirector,
     cookies: http.cookiejar.MozillaCookieJar,
     email: str,
+    nickname: str,
 ) -> None:
     if is_authenticated(opener):
         print("Сохранённая сессия авторизации действительна.")
@@ -124,10 +145,10 @@ def authenticate(
     code_or_link = getpass.getpass(
         "Вставьте код из письма или полную ссылку (ввод скрыт): "
     )
-    with opener.open(build_magic_link(code_or_link), timeout=20):
-        pass
+    code = extract_verification_code(code_or_link)
+    verify_or_register(opener, code, nickname)
     if not is_authenticated(opener):
-        raise RuntimeError("Сайт не подтвердил авторизацию после перехода по ссылке")
+        raise RuntimeError("Сайт не подтвердил авторизацию после проверки кода")
 
     COOKIE_FILE.parent.mkdir(parents=True, exist_ok=True)
     cookies.save(ignore_discard=True, ignore_expires=True)
@@ -230,7 +251,7 @@ def main() -> None:
 
     test_slug = normalize_test_slug(args.test_slug)
     opener, cookies = load_session()
-    authenticate(opener, cookies, args.email)
+    authenticate(opener, cookies, args.email, args.nickname)
 
     room_id = create_private_room_id()
     room_url = create_private_lobby_url(test_slug, room_id)
