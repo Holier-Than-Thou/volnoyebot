@@ -8,7 +8,7 @@ import time
 from telethon import events
 from telethon.tl.types import Channel, Chat, User
 
-from . import pets
+from . import emulation, pets
 from .casino import is_explicit_message_reply, message_topic_id
 
 
@@ -28,7 +28,7 @@ def register(client, handler, store, display_name) -> None:
     async def accept_pet_transfer(event) -> None:
         if not event.is_group or not is_explicit_message_reply(event.message):
             return
-        sender = await event.get_sender()
+        sender = await emulation.event_sender(event)
         chat = await event.get_chat()
         if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
             return
@@ -131,7 +131,9 @@ async def handle_command(
             target_name = display_name
             if is_explicit_message_reply(event.message):
                 replied = await event.get_reply_message()
-                target_user = await replied.get_sender()
+                target_user = await emulation.message_sender(
+                    store, event.chat_id, replied
+                )
                 if not isinstance(target_user, User) or target_user.bot:
                     await event.reply(
                         "Ответьте командой на сообщение обычного пользователя.",
@@ -235,7 +237,9 @@ async def handle_command(
                 await event.reply("Укажите слот от 1 до 6.", parse_mode=None)
                 return True
             replied = await event.get_reply_message()
-            recipient = await replied.get_sender()
+            recipient = await emulation.message_sender(
+                store, event.chat_id, replied
+            )
             if not isinstance(recipient, User) or recipient.bot:
                 await event.reply(
                     "Передать питомца можно только пользователю.",

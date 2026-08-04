@@ -14,6 +14,7 @@ import websocket
 from telethon import Button, events, types
 from telethon.tl.types import Channel, Chat, User
 
+from . import emulation
 from .casino import (
     fit_telegram_message,
     is_explicit_message_reply,
@@ -164,16 +165,20 @@ async def resolve_mentioned_user(client, event) -> User | None:
     return None
 
 
-async def resolve_target_user(client, event, default_to_sender: bool = False) -> User | None:
+async def resolve_target_user(
+    client, store, event, default_to_sender: bool = False
+) -> User | None:
     if is_explicit_message_reply(event.message):
         replied = await event.get_reply_message()
-        candidate = await replied.get_sender()
+        candidate = await emulation.message_sender(
+            store, event.chat_id, replied
+        )
         return candidate if isinstance(candidate, User) else None
     mentioned = await resolve_mentioned_user(client, event)
     if mentioned is not None:
         return mentioned
     if default_to_sender:
-        sender = await event.get_sender()
+        sender = await emulation.event_sender(event)
         return sender if isinstance(sender, User) else None
     return None
 
@@ -287,7 +292,7 @@ class MotovskikhGameManager:
     async def handle_command(self, event) -> None:
         if not event.is_group:
             return
-        sender = await event.get_sender()
+        sender = await emulation.event_sender(event)
         chat = await event.get_chat()
         if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
             return
@@ -317,7 +322,7 @@ class MotovskikhGameManager:
         except ValueError as error:
             await event.reply(str(error))
             return
-        opponent = await resolve_target_user(self.client, event)
+        opponent = await resolve_target_user(self.client, self.store, event)
         if opponent is None:
             await event.reply(
                 "Ответьте командой на сообщение соперника или укажите его @тег."
@@ -395,7 +400,9 @@ class MotovskikhGameManager:
         )
 
     async def show_info(self, event) -> None:
-        target = await resolve_target_user(self.client, event, default_to_sender=True)
+        target = await resolve_target_user(
+            self.client, self.store, event, default_to_sender=True
+        )
         if target is None or target.bot:
             await event.reply(
                 "Формат: `мот инфо` либо эта команда ответом игроку или с @тегом."
@@ -438,7 +445,7 @@ class MotovskikhGameManager:
     async def handle_accept(self, event) -> None:
         if not event.is_group or not is_explicit_message_reply(event.message):
             return
-        sender = await event.get_sender()
+        sender = await emulation.event_sender(event)
         chat = await event.get_chat()
         if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
             return

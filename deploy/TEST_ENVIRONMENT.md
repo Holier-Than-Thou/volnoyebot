@@ -9,6 +9,10 @@
 - Web App: `https://nikitaabashevst.fvds.ru/test/fishing.html`;
 - статическая сборка: `/var/www/volnoyebot-test`.
 
+Эмуляция игроков включается только здесь — строкой `EMULATION_ENABLED=1` в
+`/etc/volnoyebot-test/volnoyebot.env`. В рабочем окружении переменная должна
+отсутствовать: без неё бот не реагирует на префикс `эмул`.
+
 ## Обновление тестовой версии
 
 ```bash
