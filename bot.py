@@ -19,7 +19,15 @@ from telethon import TelegramClient, events
 from telethon.tl import types
 from telethon.tl.types import Channel, Chat, MessageMediaDice, User
 
-from games import casino, dice, farm, guess_sound, motovskikh_link, museum
+from games import (
+    casino,
+    dice,
+    farm,
+    guess_sound,
+    motovskikh_link,
+    museum,
+    private_commands,
+)
 from games.farm_storage import FarmStoreMixin, initialize_farm_schema
 from games.guess_sound.freesound import FreesoundProvider
 from games.museum_storage import MuseumStoreMixin, initialize_museum_schema
@@ -2032,10 +2040,7 @@ def is_bot_command(text: str) -> bool:
 async def activation_gate(event) -> None:
     """Не пропускать события чата до явной активации администратором."""
     if not event.is_group:
-        if re.match(
-            r"(?i)^/motovskikh_auth(?:@\w+)?\s*$",
-            event.raw_text or "",
-        ):
+        if private_commands.is_private_slash_command(event.raw_text or ""):
             return
         raise events.StopPropagation
     if casino.is_forwarded_message(event.message):
@@ -2849,6 +2854,7 @@ restore_dice_expirations = dice.register(
 casino.register(client, casino_command)
 farm.register(client, direct_farm_command, store, display_name)
 museum.register(client, direct_museum_command)
+private_commands.register(client)
 motovskikh_link.register(
     client,
     store,
@@ -2883,6 +2889,10 @@ async def main() -> None:
     if not me.username:
         raise RuntimeError("У Telegram-бота отсутствует username")
     bot_username = me.username
+    try:
+        await private_commands.install_command_menu(client)
+    except Exception as error:
+        print(f"Не удалось обновить меню команд Telegram: {error}")
     await announce_release()
     await restore_dice_expirations()
     payout_task = asyncio.create_task(work_payout_loop())
