@@ -43,6 +43,7 @@ class PrivateCommandsTests(unittest.TestCase):
 
         self.assertIn("каз баланс", message)
         self.assertIn("кости <ставка>", message)
+        self.assertIn("мот [ставка] <ссылка>", message)
         self.assertIn("музей помощь", message)
         self.assertIn("ферма собрать", message)
         self.assertIn("зг старт", message)

@@ -16,6 +16,7 @@ from telethon.tl.types import User
 
 from .motovskikh_client import (
     AuthenticationError,
+    SESSION_LOCK,
     connect_room,
     create_private_lobby_url,
     create_private_room_id,
@@ -89,7 +90,6 @@ class MotovskikhLinkManager:
         self.max_attempts = max_attempts
         self.attempts: dict[int, LinkAttempt] = {}
         self.rebind_tokens: dict[str, tuple[int, float]] = {}
-        self.session_lock = threading.Lock()
 
     async def handle_command(self, event) -> None:
         if not event.is_private:
@@ -300,7 +300,7 @@ class MotovskikhLinkManager:
 
     def wait_for_candidate(self, attempt: LinkAttempt) -> Candidate:
         socket: websocket.WebSocket | None = None
-        with self.session_lock:
+        with SESSION_LOCK:
             opener, cookies = load_session(self.cookie_path)
             refresh_authentication(opener, cookies)
             initialize_room(opener, DEFAULT_TEST_SLUG, attempt.room_id)

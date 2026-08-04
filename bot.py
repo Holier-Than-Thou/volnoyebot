@@ -24,6 +24,7 @@ from games import (
     dice,
     farm,
     guess_sound,
+    motovskikh_game,
     motovskikh_link,
     museum,
     private_commands,
@@ -80,6 +81,9 @@ MOTOVSKIKH_COOKIE_PATH = Path(
 )
 MOTOVSKIKH_LINK_TTL_SECONDS = env_int("MOTOVSKIKH_LINK_TTL_SECONDS", 300)
 MOTOVSKIKH_MAX_LINK_ATTEMPTS = env_int("MOTOVSKIKH_MAX_LINK_ATTEMPTS", 10)
+MOTOVSKIKH_MATCH_TTL_SECONDS = env_int(
+    "MOTOVSKIKH_MATCH_TTL_SECONDS", 60 * 60
+)
 
 if not API_HASH:
     raise RuntimeError("В .env не задан API_HASH")
@@ -89,7 +93,11 @@ if ADMIN_ID <= 0:
     raise RuntimeError("В .env должен быть указан положительный ADMIN_ID")
 if INITIAL_BALANCE < 0 or MIN_BET <= 0:
     raise RuntimeError("Проверьте INITIAL_BALANCE и MIN_BET в .env")
-if MOTOVSKIKH_LINK_TTL_SECONDS <= 0 or MOTOVSKIKH_MAX_LINK_ATTEMPTS <= 0:
+if (
+    MOTOVSKIKH_LINK_TTL_SECONDS <= 0
+    or MOTOVSKIKH_MAX_LINK_ATTEMPTS <= 0
+    or MOTOVSKIKH_MATCH_TTL_SECONDS <= 0
+):
     raise RuntimeError("Проверьте настройки привязки Motovskikh в .env")
 
 
@@ -2030,7 +2038,8 @@ def is_bot_command(text: str) -> bool:
     return bool(
         re.match(
             r"(?iu)^(?:каз(?:\s|$)|кз\s+кд(?:\s|$)|"
-            r"ферма(?:\s|$)|музей(?:\s|$)|кости(?:\s|$)|зг(?:\s|$))",
+            r"ферма(?:\s|$)|музей(?:\s|$)|кости(?:\s|$)|"
+            r"мот(?:\s|$)|зг(?:\s|$))",
             text.strip(),
         )
     )
@@ -2108,6 +2117,10 @@ async def casino_command(event) -> None:
     chat_id = event.chat_id
     topic_id = casino.message_topic_id(event.message)
     name = display_name(sender)
+
+    # Подкоманды «каз мот ...» обслуживает отдельный модуль онлайн-матчей.
+    if command == "мот":
+        return
 
     topic_enabled = await store.is_topic_enabled(chat_id, topic_id)
 
@@ -2863,6 +2876,16 @@ motovskikh_link.register(
     MOTOVSKIKH_LINK_TTL_SECONDS,
     MOTOVSKIKH_MAX_LINK_ATTEMPTS,
 )
+motovskikh_games = motovskikh_game.register(
+    client,
+    store,
+    MOTOVSKIKH_COOKIE_PATH,
+    display_name,
+    track_background_task,
+    lambda: bot_username,
+    INITIAL_BALANCE,
+    MOTOVSKIKH_MATCH_TTL_SECONDS,
+)
 guess_sound.register(
     client,
     FreesoundProvider(FREESOUND_API_KEY),
@@ -2895,6 +2918,7 @@ async def main() -> None:
         print(f"Не удалось обновить меню команд Telegram: {error}")
     await announce_release()
     await restore_dice_expirations()
+    await motovskikh_games.restore()
     payout_task = asyncio.create_task(work_payout_loop())
     cleanup_tasks.add(payout_task)
     payout_task.add_done_callback(cleanup_tasks.discard)

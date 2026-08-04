@@ -6,6 +6,7 @@ import http.cookiejar
 import json
 import secrets
 import string
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -19,6 +20,7 @@ BASE_URL = "https://motovskikh.ru"
 WS_BASE_URL = "wss://motovskikh.ru/api/wsup/v1/map"
 WS_PATH = "/api/wsup/v1/map"
 PRIVATE_ROOM_ID_LENGTH = 11
+SESSION_LOCK = threading.Lock()
 
 
 class AuthenticationError(RuntimeError):
