@@ -36,6 +36,24 @@ SESSION_NAME=casino_bot
 python bot.py
 ```
 
+## Тесты
+
+Весь набор запускается одной командой из корня проекта:
+
+```powershell
+python -m unittest discover -s tests -t .
+```
+
+Каталог `tests` — пакет, поэтому команда находит все модули `test_*.py`.
+Отдельный файл можно запустить напрямую, добавив корень проекта в путь:
+
+```powershell
+$env:PYTHONPATH = "."; python tests/test_casino.py
+```
+
+Внешние сервисы в тестах не используются: Telegram, Freesound и Motovskikh
+подменяются заглушками, а SQLite создаётся в памяти или во временном каталоге.
+
 Тестовое приватное лобби Motovskikh Tests с подключённым наблюдателем:
 
 ```powershell
