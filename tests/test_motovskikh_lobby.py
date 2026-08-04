@@ -2,7 +2,7 @@ import unittest
 from http.cookiejar import Cookie, CookieJar
 from unittest.mock import patch
 
-from scripts.create_motovskikh_lobby import (
+from games.motovskikh_client import (
     create_private_lobby_url,
     extract_verification_code,
     websocket_cookie_header,
@@ -10,7 +10,7 @@ from scripts.create_motovskikh_lobby import (
 
 
 class CreateMotovskikhLobbyTests(unittest.TestCase):
-    @patch("scripts.create_motovskikh_lobby.secrets.choice", return_value="a")
+    @patch("games.motovskikh_client.secrets.choice", return_value="a")
     def test_creates_private_room_identifier(self, _choice) -> None:
         url = create_private_lobby_url("/moscow/")
 
