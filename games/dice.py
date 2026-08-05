@@ -9,6 +9,7 @@ from telethon import events
 from telethon.tl import types
 from telethon.tl.types import Channel, Chat, MessageMediaDice, User
 
+from . import emulation
 from .casino import is_explicit_message_reply, message_topic_id
 
 
@@ -84,7 +85,7 @@ def register(client, store, display_name, schedule_delete):
         if not event.is_group or not is_explicit_message_reply(event.message):
             return
 
-        sender = await event.get_sender()
+        sender = await emulation.event_sender(event)
         chat = await event.get_chat()
         if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
             return
@@ -99,7 +100,9 @@ def register(client, store, display_name, schedule_delete):
             return
 
         replied = await event.get_reply_message()
-        opponent = await replied.get_sender()
+        opponent = await emulation.message_sender(
+            store, event.chat_id, replied
+        )
         if not isinstance(opponent, User) or opponent.bot:
             await event.reply("Вызвать на игру можно только пользователя.")
             return
@@ -148,7 +151,7 @@ def register(client, store, display_name, schedule_delete):
         if not event.is_group or not is_explicit_message_reply(event.message):
             return
 
-        sender = await event.get_sender()
+        sender = await emulation.event_sender(event)
         chat = await event.get_chat()
         if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
             return

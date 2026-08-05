@@ -282,3 +282,7 @@ class FarmStoreTest(unittest.IsolatedAsyncioTestCase):
         recipient_pets = await self.store.get_farm(1, 20)
         self.assertEqual(sender_pets["pets"], [])
         self.assertEqual(recipient_pets["pets"][0].name, "Подарок")
+
+
+if __name__ == "__main__":
+    unittest.main()

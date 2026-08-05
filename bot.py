@@ -22,11 +22,17 @@ from telethon.tl.types import Channel, Chat, MessageMediaDice, User
 from games import (
     casino,
     dice,
+    emulation,
     farm,
     guess_sound,
+    motovskikh_game,
     motovskikh_link,
     museum,
     private_commands,
+)
+from games.emulation_storage import (
+    EmulationStoreMixin,
+    initialize_emulation_schema,
 )
 from games.farm_storage import FarmStoreMixin, initialize_farm_schema
 from games.guess_sound.freesound import FreesoundProvider
@@ -46,6 +52,14 @@ BASE_DIR = Path(__file__).resolve().parent
 ENV_FILE = Path(os.getenv("ENV_FILE", BASE_DIR / ".env"))
 load_dotenv(ENV_FILE)
 DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR))
+
+
+def env_flag(name: str, default: bool = False) -> bool:
+    """Прочитать булев переключатель из окружения."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().casefold() in {"1", "true", "yes", "on", "да"}
 
 
 def env_int(name: str, default: int | None = None) -> int:
@@ -80,6 +94,11 @@ MOTOVSKIKH_COOKIE_PATH = Path(
 )
 MOTOVSKIKH_LINK_TTL_SECONDS = env_int("MOTOVSKIKH_LINK_TTL_SECONDS", 300)
 MOTOVSKIKH_MAX_LINK_ATTEMPTS = env_int("MOTOVSKIKH_MAX_LINK_ATTEMPTS", 10)
+MOTOVSKIKH_MATCH_TTL_SECONDS = env_int(
+    "MOTOVSKIKH_MATCH_TTL_SECONDS", 60 * 60
+)
+# Эмуляция игроков предназначена только для тестового контура.
+EMULATION_ENABLED = env_flag("EMULATION_ENABLED")
 
 if not API_HASH:
     raise RuntimeError("В .env не задан API_HASH")
@@ -89,7 +108,11 @@ if ADMIN_ID <= 0:
     raise RuntimeError("В .env должен быть указан положительный ADMIN_ID")
 if INITIAL_BALANCE < 0 or MIN_BET <= 0:
     raise RuntimeError("Проверьте INITIAL_BALANCE и MIN_BET в .env")
-if MOTOVSKIKH_LINK_TTL_SECONDS <= 0 or MOTOVSKIKH_MAX_LINK_ATTEMPTS <= 0:
+if (
+    MOTOVSKIKH_LINK_TTL_SECONDS <= 0
+    or MOTOVSKIKH_MAX_LINK_ATTEMPTS <= 0
+    or MOTOVSKIKH_MATCH_TTL_SECONDS <= 0
+):
     raise RuntimeError("Проверьте настройки привязки Motovskikh в .env")
 
 
@@ -116,6 +139,7 @@ HELP_TEXT = casino.help_text(MIN_BET)
 
 
 class BalanceStore(
+    EmulationStoreMixin,
     FarmStoreMixin,
     MotovskikhStoreMixin,
     MuseumStoreMixin,
@@ -363,6 +387,7 @@ class BalanceStore(
             FROM chat_settings
             """
         )
+        initialize_emulation_schema(self.connection)
         initialize_farm_schema(self.connection)
         initialize_motovskikh_schema(self.connection)
         initialize_museum_schema(self.connection)
@@ -1876,6 +1901,9 @@ def track_background_task(task: asyncio.Task) -> None:
 def telegram_mention(user_id: int, display_name_value: str) -> str:
     """Сформировать Markdown-упоминание пользователя без username."""
     safe_name = re.sub(r"([\\\[\]])", r"\\\1", display_name_value)
+    if emulation.is_emulated(user_id):
+        # У эмулируемого игрока нет аккаунта, ссылка на профиль невозможна.
+        return safe_name
     return f"[{safe_name}](tg://user?id={user_id})"
 
 
@@ -2030,7 +2058,8 @@ def is_bot_command(text: str) -> bool:
     return bool(
         re.match(
             r"(?iu)^(?:каз(?:\s|$)|кз\s+кд(?:\s|$)|"
-            r"ферма(?:\s|$)|музей(?:\s|$)|кости(?:\s|$)|зг(?:\s|$))",
+            r"ферма(?:\s|$)|музей(?:\s|$)|кости(?:\s|$)|"
+            r"мот(?:\s|$)|зг(?:\s|$))",
             text.strip(),
         )
     )
@@ -2040,6 +2069,17 @@ def is_bot_command(text: str) -> bool:
 async def activation_gate(event) -> None:
     """Не пропускать события чата до явной активации администратором."""
     if not event.is_group:
+        if EMULATION_ENABLED and emulation.has_prefix(event.raw_text or ""):
+            # В личном чате префикс нужен для привязки аккаунтов персонам.
+            outcome = await emulation.handle_prefix(
+                event,
+                store,
+                admin_id,
+                await event.get_sender(),
+                private=True,
+            )
+            if outcome.stop:
+                raise events.StopPropagation
         if private_commands.is_private_slash_command(event.raw_text or ""):
             return
         raise events.StopPropagation
@@ -2064,15 +2104,24 @@ async def activation_gate(event) -> None:
     if not await store.is_chat_activated(event.chat_id):
         raise events.StopPropagation
 
+    actor = sender
+    if EMULATION_ENABLED:
+        # Префикс «эмул» подменяет личность до разбора игровых шаблонов.
+        outcome = await emulation.handle_prefix(event, store, admin_id, sender)
+        if outcome.stop:
+            raise events.StopPropagation
+        if outcome.actor is not None:
+            actor = outcome.actor
+
     if (
-        isinstance(sender, User)
-        and not sender.bot
+        isinstance(actor, User)
+        and not actor.bot
         and is_bot_command(event.raw_text or "")
     ):
         await store.mark_command_activity(
             event.chat_id,
-            sender.id,
-            display_name(sender),
+            actor.id,
+            display_name(actor),
         )
 
 
@@ -2080,11 +2129,17 @@ async def target_from_command(event, args: list[str]) -> tuple[User, int] | None
     """Разобрать цель админ-команды: reply либо пара <user_id> <очки>."""
     if event.is_reply and len(args) == 1:
         replied = await event.get_reply_message()
-        sender = await replied.get_sender()
+        sender = await emulation.message_sender(store, event.chat_id, replied)
         if isinstance(sender, User):
             return sender, int(args[0])
     if len(args) == 2:
-        entity = await client.get_entity(int(args[0]))
+        target_id = int(args[0])
+        if emulation.is_emulated(target_id):
+            row = await store.get_emulated_player(event.chat_id, target_id)
+            if row is None:
+                return None
+            return emulation.emulated_user(target_id, row["name"]), int(args[1])
+        entity = await client.get_entity(target_id)
         if isinstance(entity, User):
             return entity, int(args[1])
     return None
@@ -2096,7 +2151,7 @@ async def casino_command(event) -> None:
         await event.reply("Эта игра работает только в групповых чатах.")
         return
 
-    sender = await event.get_sender()
+    sender = await emulation.event_sender(event)
     chat = await event.get_chat()
     if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
         return
@@ -2108,6 +2163,10 @@ async def casino_command(event) -> None:
     chat_id = event.chat_id
     topic_id = casino.message_topic_id(event.message)
     name = display_name(sender)
+
+    # Подкоманды «каз мот ...» обслуживает отдельный модуль онлайн-матчей.
+    if command == "мот":
+        return
 
     topic_enabled = await store.is_topic_enabled(chat_id, topic_id)
 
@@ -2227,7 +2286,9 @@ async def casino_command(event) -> None:
         target_name = name
         if casino.is_explicit_message_reply(event.message):
             replied = await event.get_reply_message()
-            replied_user = await replied.get_sender()
+            replied_user = await emulation.message_sender(
+                store, chat_id, replied
+            )
             if not isinstance(replied_user, User) or replied_user.bot:
                 await event.reply(
                     "Ответьте командой на сообщение обычного пользователя."
@@ -2334,7 +2395,7 @@ async def casino_command(event) -> None:
             return
 
         replied = await event.get_reply_message()
-        recipient = await replied.get_sender()
+        recipient = await emulation.message_sender(store, chat_id, replied)
         if not isinstance(recipient, User) or recipient.bot:
             await event.reply("Переводить очки можно только пользователям.")
             return
@@ -2448,7 +2509,9 @@ async def casino_command(event) -> None:
             return
         if casino.is_explicit_message_reply(event.message):
             replied = await event.get_reply_message()
-            target_user = await replied.get_sender()
+            target_user = await emulation.message_sender(
+                store, chat_id, replied
+            )
             if not isinstance(target_user, User) or target_user.bot:
                 await event.reply(
                     "Ответьте командой на сообщение обычного пользователя."
@@ -2787,7 +2850,7 @@ async def handle_museum_command(
     target_name = sender_name
     if casino.is_explicit_message_reply(event.message):
         replied = await event.get_reply_message()
-        replied_user = await replied.get_sender()
+        replied_user = await emulation.message_sender(store, chat_id, replied)
         if not isinstance(replied_user, User) or replied_user.bot:
             await event.reply(
                 "Ответьте командой на сообщение обычного пользователя."
@@ -2807,7 +2870,7 @@ async def direct_museum_command(event) -> None:
     """Обработать пользовательский префикс «музей»."""
     if not event.is_group:
         return
-    sender = await event.get_sender()
+    sender = await emulation.event_sender(event)
     chat = await event.get_chat()
     if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
         return
@@ -2828,7 +2891,7 @@ async def direct_farm_command(event) -> None:
     """Обработать общий префикс «ферма» без слова «каз»."""
     if not event.is_group:
         return
-    sender = await event.get_sender()
+    sender = await emulation.event_sender(event)
     chat = await event.get_chat()
     if not isinstance(sender, User) or not isinstance(chat, (Chat, Channel)):
         return
@@ -2863,6 +2926,16 @@ motovskikh_link.register(
     MOTOVSKIKH_LINK_TTL_SECONDS,
     MOTOVSKIKH_MAX_LINK_ATTEMPTS,
 )
+motovskikh_games = motovskikh_game.register(
+    client,
+    store,
+    MOTOVSKIKH_COOKIE_PATH,
+    display_name,
+    track_background_task,
+    lambda: bot_username,
+    INITIAL_BALANCE,
+    MOTOVSKIKH_MATCH_TTL_SECONDS,
+)
 guess_sound.register(
     client,
     FreesoundProvider(FREESOUND_API_KEY),
@@ -2895,6 +2968,7 @@ async def main() -> None:
         print(f"Не удалось обновить меню команд Telegram: {error}")
     await announce_release()
     await restore_dice_expirations()
+    await motovskikh_games.restore()
     payout_task = asyncio.create_task(work_payout_loop())
     cleanup_tasks.add(payout_task)
     payout_task.add_done_callback(cleanup_tasks.discard)

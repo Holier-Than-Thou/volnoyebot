@@ -41,6 +41,14 @@ GROUP_COMMAND_SECTIONS = (
         ),
     ),
     (
+        "🗺 Motovskikh Tests",
+        (
+            "мот [ставка] <ссылка> — вызов ответом или с @тегом",
+            "мот инфо — своя/чужая статистика",
+            "мот топ — рейтинг по играм и проценту побед",
+        ),
+    ),
+    (
         "🏛 Музей",
         (
             "музей — показать экспозицию",
@@ -132,7 +140,15 @@ def register(client) -> None:
     )
     async def start_command(event) -> None:
         if event.is_private:
-            await event.reply(welcome_text(), parse_mode=None)
+            payload = (event.raw_text or "").split(maxsplit=1)
+            if len(payload) == 2 and payload[1].casefold() == "motovskikh_auth":
+                await event.reply(
+                    "Для привязки аккаунта Motovskikh отправьте "
+                    "/motovskikh_auth.",
+                    parse_mode=None,
+                )
+            else:
+                await event.reply(welcome_text(), parse_mode=None)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/help(?:@\w+)?\s*$"))
     async def help_command(event) -> None:

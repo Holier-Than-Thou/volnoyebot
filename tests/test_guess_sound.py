@@ -147,3 +147,7 @@ class GuessStoreTest(unittest.IsolatedAsyncioTestCase):
         await self.store.mark_used(1, "freesound", "42")
         self.assertEqual(await self.store.used_ids(1, "freesound"), {"42"})
         self.assertEqual(await self.store.used_ids(2, "freesound"), set())
+
+
+if __name__ == "__main__":
+    unittest.main()
