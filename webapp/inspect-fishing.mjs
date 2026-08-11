@@ -32,6 +32,29 @@ const capture = async (name) => {
   });
 };
 
+const soundToggle = page.locator("#sound-toggle");
+if (
+  !await soundToggle.isVisible()
+  || await soundToggle.getAttribute("aria-pressed") !== "true"
+) {
+  throw new Error("Переключатель звука отсутствует или выключен по умолчанию");
+}
+await soundToggle.click();
+if (
+  await soundToggle.getAttribute("aria-pressed") !== "false"
+  || await page.evaluate(() => localStorage.getItem("fishing-audio-enabled")) !== "off"
+) {
+  throw new Error("Звук не выключается или настройка не сохраняется");
+}
+await soundToggle.click();
+await page.waitForFunction(() =>
+  document.querySelector("#sound-toggle")?.getAttribute("data-audio-state") === "running"
+);
+if (await soundToggle.getAttribute("aria-pressed") !== "true") {
+  throw new Error("Звук не включается после взаимодействия");
+}
+await soundToggle.click();
+
 await capture("00-idle");
 await page.locator('[data-rod-option="bamboo"]').click();
 await capture("01-bamboo-idle");
@@ -169,6 +192,9 @@ for (const rod of ["classic", "bamboo", "professional"]) {
       }
     }
     await page.locator("#cast-button").click();
+    await page.waitForFunction(() =>
+      document.querySelectorAll("[data-rod-option]:disabled").length === 0
+    );
     if (await page.locator("[data-rod-option]:disabled").count() !== 0) {
       throw new Error(`Выбор удочки не разблокирован после отмены (${rod})`);
     }

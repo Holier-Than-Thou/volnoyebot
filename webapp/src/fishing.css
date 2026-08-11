@@ -54,6 +54,88 @@ h1 {
   letter-spacing: -.06em;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sound-toggle {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border: 2px solid #315c57;
+  border-radius: 8px;
+  color: #244d4b;
+  background: #f8e6ad;
+  box-shadow: inset -2px -2px 0 rgba(124, 91, 34, .24), 3px 3px 0 rgba(31, 66, 64, .14);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.sound-toggle:hover { background: #ffeab0; }
+.sound-toggle:active { transform: translate(2px, 2px); box-shadow: inset -2px -2px 0 rgba(124, 91, 34, .24); }
+.sound-toggle:focus-visible { outline: 3px solid rgba(238, 112, 53, .45); outline-offset: 3px; }
+.sound-toggle:disabled { cursor: not-allowed; filter: grayscale(1); opacity: .55; }
+
+.sound-toggle-icon {
+  position: relative;
+  width: 17px;
+  height: 14px;
+  flex: 0 0 17px;
+}
+
+.sound-toggle-icon::before {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  width: 5px;
+  height: 6px;
+  background: currentColor;
+  box-shadow: 4px -3px 0 currentColor, 4px 3px 0 currentColor;
+  content: "";
+}
+
+.sound-toggle-icon::after {
+  position: absolute;
+  top: 3px;
+  right: 0;
+  width: 6px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-radius: 0 8px 8px 0;
+  content: "";
+}
+
+.sound-toggle[data-audio-state="locked"] .sound-toggle-icon {
+  animation: sound-awaiting 1.2s steps(2, end) infinite;
+}
+
+.sound-toggle[data-audio-state="muted"] {
+  color: #86635a;
+  background: #e6ddd0;
+}
+
+.sound-toggle[data-audio-state="muted"] .sound-toggle-icon::after {
+  top: -1px;
+  right: 4px;
+  width: 2px;
+  height: 17px;
+  border: 0;
+  border-radius: 0;
+  background: #b45338;
+  transform: rotate(-45deg);
+}
+
+@keyframes sound-awaiting {
+  50% { opacity: .55; }
+}
+
 .weather {
   display: flex;
   align-items: center;
@@ -635,7 +717,10 @@ footer span {
 
 @media (max-width: 760px) {
   .fishing-app { width: 100%; padding: 15px 0 0; }
-  .game-header { padding: 0 16px 13px; }
+  .game-header { align-items: center; padding: 0 16px 13px; }
+  .header-actions { gap: 0; }
+  .sound-toggle { min-width: 42px; justify-content: center; padding: 9px; }
+  .sound-toggle-label { display: none; }
   .weather { display: none; }
   .lake-scene { min-height: 620px; border-width: 4px; border-radius: 0; }
   .fisher { bottom: 22%; left: 15%; transform: scale(.82); }

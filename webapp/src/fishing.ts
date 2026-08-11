@@ -1,4 +1,5 @@
 import "./fishing.css";
+import { FishingAudio } from "./fishing-audio";
 
 type GameState = "idle" | "casting" | "waiting" | "playing" | "caught" | "lost";
 type RodKind = "classic" | "bamboo" | "professional";
@@ -13,9 +14,22 @@ app.innerHTML = `
         <p class="eyebrow">Казино «Три топора»</p>
         <h1>Тихая заводь</h1>
       </div>
-      <div class="weather">
-        <span class="weather-icon">☀</span>
-        <span><b>Утро</b><small>клёв хороший</small></span>
+      <div class="header-actions">
+        <button
+          class="sound-toggle"
+          id="sound-toggle"
+          type="button"
+          aria-label="Выключить звук"
+          aria-pressed="true"
+          data-audio-state="locked"
+        >
+          <span class="sound-toggle-icon" aria-hidden="true"></span>
+          <span class="sound-toggle-label">Звук</span>
+        </button>
+        <div class="weather">
+          <span class="weather-icon">☀</span>
+          <span><b>Утро</b><small>клёв хороший</small></span>
+        </div>
       </div>
     </header>
 
@@ -136,6 +150,7 @@ const safeZoneElement = get<HTMLElement>("safe-zone");
 const playerFloatElement = get<HTMLElement>("player-float");
 const progressFill = get<HTMLElement>("progress-fill");
 const castButton = get<HTMLButtonElement>("cast-button");
+const soundToggle = get<HTMLButtonElement>("sound-toggle");
 const statusIcon = get<HTMLElement>("status-icon");
 const statusTitle = get<HTMLElement>("status-title");
 const statusText = get<HTMLElement>("status-text");
@@ -143,6 +158,24 @@ const recordValue = get<HTMLElement>("record-value");
 const rodButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("[data-rod-option]"),
 );
+
+const fishingAudio = new FishingAudio((audioStatus) => {
+  soundToggle.dataset.audioState = audioStatus;
+  const soundEnabled = audioStatus !== "muted" && audioStatus !== "unsupported";
+  soundToggle.setAttribute("aria-pressed", String(soundEnabled));
+  soundToggle.disabled = audioStatus === "unsupported";
+  soundToggle.setAttribute(
+    "aria-label",
+    audioStatus === "muted" ? "Включить звук" : "Выключить звук",
+  );
+  soundToggle.title = audioStatus === "locked"
+    ? "Звук включится после первого касания"
+    : audioStatus === "unsupported"
+      ? "Звук не поддерживается браузером"
+      : audioStatus === "muted"
+        ? "Включить звук"
+        : "Выключить звук";
+});
 
 const assetUrl = (path: string): string => (
   `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`
@@ -166,6 +199,7 @@ let safeTarget = 0.55;
 let targetChangeIn = 0;
 let catchProgress = 0.42;
 let roundStartedAt = 0;
+let nextFightSplashAt = 0;
 let bestTime: number | null = null;
 let selectedRod: RodKind = "classic";
 let castPending = false;
@@ -444,6 +478,7 @@ function finishCast(): void {
   window.clearTimeout(castFallbackTimer);
   castFallbackTimer = undefined;
   setState("waiting");
+  void fishingAudio.playLandingSplash();
   const biteDelay = 1800 + Math.random() * 3200;
   waitTimer = window.setTimeout(startMinigame, biteDelay);
 }
@@ -464,6 +499,7 @@ async function cast(): Promise<void> {
   window.clearTimeout(waitTimer);
   window.cancelAnimationFrame(animationFrame ?? 0);
   setState("casting");
+  void fishingAudio.playCast();
 
   castFallbackTimer = window.setTimeout(finishCast, 980);
 }
@@ -477,8 +513,10 @@ function startMinigame(): void {
   targetChangeIn = 0.4;
   catchProgress = 0.42;
   roundStartedAt = performance.now();
+  nextFightSplashAt = roundStartedAt + 460;
   lastFrame = roundStartedAt;
   setState("playing");
+  void fishingAudio.playBite();
   updateVisuals();
   animationFrame = window.requestAnimationFrame(gameLoop);
 }
@@ -518,6 +556,11 @@ function gameLoop(now: number): void {
   scene.classList.toggle("in-zone", isInside);
   updateVisuals();
 
+  if (now >= nextFightSplashAt) {
+    fishingAudio.playBobberSplash(holding ? 0.82 : 0.62);
+    nextFightSplashAt += 1320;
+  }
+
   if (catchProgress >= 1) {
     setState("caught");
     return;
@@ -540,6 +583,12 @@ function setHolding(value: boolean): void {
   scene.classList.toggle("holding", value);
 }
 
+window.addEventListener("pointerdown", () => void fishingAudio.unlock(), {
+  capture: true,
+  once: true,
+});
+window.addEventListener("keydown", () => void fishingAudio.unlock(), { once: true });
+soundToggle.addEventListener("click", () => void fishingAudio.toggle());
 castButton.addEventListener("click", () => void cast());
 fisher.addEventListener("animationend", (event) => {
   if (event.animationName === "fisher-cast") finishCast();
@@ -575,6 +624,7 @@ window.addEventListener("keyup", (event) => {
   setHolding(false);
 });
 window.addEventListener("blur", () => setHolding(false));
+window.addEventListener("pagehide", () => fishingAudio.dispose(), { once: true });
 const sceneResizeObserver = new ResizeObserver(() => {
   updateSceneLayout();
   updateFishingLine();
