@@ -53,7 +53,29 @@ await page.waitForFunction(() =>
 if (await soundToggle.getAttribute("aria-pressed") !== "true") {
   throw new Error("Звук не включается после взаимодействия");
 }
-await soundToggle.click();
+
+const decodedEffects = await page.evaluate(async () => {
+  const paths = [
+    "cast.wav",
+    "bobber-land.wav",
+    "bite.wav",
+    "fight-splash-1.wav",
+    "fight-splash-2.wav",
+    "fight-splash-3.wav",
+  ];
+  const context = new AudioContext();
+  const results = await Promise.all(paths.map(async (name) => {
+    const response = await fetch(`/assets/fishing/audio/${name}`);
+    if (!response.ok) throw new Error(`Не загружен аудиоэффект ${name}`);
+    const buffer = await context.decodeAudioData(await response.arrayBuffer());
+    return { name, duration: buffer.duration, channels: buffer.numberOfChannels };
+  }));
+  await context.close();
+  return results;
+});
+if (decodedEffects.some((effect) => effect.duration <= 0 || effect.channels !== 1)) {
+  throw new Error(`Некорректные аудиоэффекты: ${JSON.stringify(decodedEffects)}`);
+}
 
 await capture("00-idle");
 await page.locator('[data-rod-option="bamboo"]').click();

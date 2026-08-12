@@ -1,11 +1,20 @@
 type AudioStatus = "locked" | "running" | "muted" | "unsupported";
 
 type AudioStatusListener = (status: AudioStatus) => void;
+type EffectName = "cast" | "bobberLand" | "bite" | "fightSplash1" | "fightSplash2" | "fightSplash3";
 
 const AUDIO_PREFERENCE_KEY = "fishing-audio-enabled";
 const STEP_DURATION = 0.36;
 const MUSIC_VOLUME = 0.13;
 const AMBIENCE_VOLUME = 0.15;
+const EFFECT_PATHS: Record<EffectName, string> = {
+  cast: "assets/fishing/audio/cast.wav",
+  bobberLand: "assets/fishing/audio/bobber-land.wav",
+  bite: "assets/fishing/audio/bite.wav",
+  fightSplash1: "assets/fishing/audio/fight-splash-1.wav",
+  fightSplash2: "assets/fishing/audio/fight-splash-2.wav",
+  fightSplash3: "assets/fishing/audio/fight-splash-3.wav",
+};
 
 const midiFrequency = (note: number): number => 440 * 2 ** ((note - 69) / 12);
 
@@ -22,6 +31,9 @@ export class FishingAudio {
   private musicStep = 0;
   private nextMusicStepAt = 0;
   private backgroundSources = new Set<AudioScheduledSourceNode>();
+  private effectBuffers = new Map<EffectName, AudioBuffer>();
+  private effectLoads = new Map<EffectName, Promise<AudioBuffer>>();
+  private fightSplashIndex = 0;
   private randomState = this.createRandomSeed();
 
   constructor(private readonly onStatusChange: AudioStatusListener) {
@@ -78,6 +90,7 @@ export class FishingAudio {
     if (this.context?.state === "running") {
       this.fadeMaster(0.72, 0.08);
       this.startBeds();
+      void this.preloadEffects();
     }
     this.reportStatus();
   }
@@ -86,31 +99,32 @@ export class FishingAudio {
     await this.unlock();
     if (!this.canPlay()) return;
     this.duckBackground(0.58);
-    this.playNoiseSweep(0.48, 2100, 380, 0.42);
-    this.playTone(330, 0.025, 0.3, 0.17, "triangle", this.effectsGain);
+    await this.playEffect("cast", 0.95);
   }
 
   async playLandingSplash(): Promise<void> {
     await this.unlock();
     if (!this.canPlay()) return;
-    this.duckBackground(0.48);
-    this.playSplash(1.12);
+    this.duckBackground(0.72);
+    await this.playEffect("bobberLand", 0.95);
   }
 
   async playBite(): Promise<void> {
     await this.unlock();
-    if (!this.canPlay() || !this.context) return;
+    if (!this.canPlay()) return;
     this.duckBackground(0.62);
-    const now = this.context.currentTime;
-    this.playTone(659.25, 0.01, 0.16, 0.22, "square", this.effectsGain, now);
-    this.playTone(987.77, 0.01, 0.2, 0.2, "square", this.effectsGain, now + 0.13);
-    this.playTone(1318.51, 0.008, 0.12, 0.12, "square", this.effectsGain, now + 0.27);
+    await this.playEffect("bite", 0.9);
   }
 
   playBobberSplash(intensity = 0.7): void {
     if (!this.canPlay()) return;
     this.duckBackground(0.34, 0.62);
-    this.playSplash(Math.max(0.55, Math.min(1.15, intensity)));
+    const splashNames = ["fightSplash1", "fightSplash2", "fightSplash3"] as const;
+    const splashName = splashNames[this.fightSplashIndex % splashNames.length];
+    this.fightSplashIndex += 1;
+    const volume = Math.max(0.55, Math.min(1.05, intensity)) * 0.86;
+    const playbackRate = 0.94 + this.random() * 0.12;
+    void this.playEffect(splashName, volume, playbackRate);
   }
 
   dispose(): void {
@@ -150,7 +164,7 @@ export class FishingAudio {
     this.masterGain.gain.value = 0.0001;
     this.musicGain.gain.value = MUSIC_VOLUME;
     this.ambienceGain.gain.value = AMBIENCE_VOLUME;
-    this.effectsGain.gain.value = 0.76;
+    this.effectsGain.gain.value = 0.92;
     this.musicGain.connect(this.masterGain);
     this.ambienceGain.connect(this.masterGain);
     this.effectsGain.connect(this.masterGain);
@@ -161,6 +175,56 @@ export class FishingAudio {
 
   private canPlay(): boolean {
     return Boolean(this.enabled && this.context?.state === "running");
+  }
+
+  private async preloadEffects(): Promise<void> {
+    await Promise.allSettled(
+      (Object.keys(EFFECT_PATHS) as EffectName[]).map((name) => this.loadEffect(name)),
+    );
+  }
+
+  private loadEffect(name: EffectName): Promise<AudioBuffer> {
+    const existingBuffer = this.effectBuffers.get(name);
+    if (existingBuffer) return Promise.resolve(existingBuffer);
+    const existingLoad = this.effectLoads.get(name);
+    if (existingLoad) return existingLoad;
+    if (!this.context) return Promise.reject(new Error("Audio context is not initialized"));
+
+    const url = `${import.meta.env.BASE_URL}${EFFECT_PATHS[name]}`;
+    const loading = fetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Unable to load audio effect: ${url}`);
+        return response.arrayBuffer();
+      })
+      .then((data) => this.context?.decodeAudioData(data))
+      .then((buffer) => {
+        if (!buffer) throw new Error("Audio context was closed while loading an effect");
+        this.effectBuffers.set(name, buffer);
+        return buffer;
+      })
+      .finally(() => this.effectLoads.delete(name));
+    this.effectLoads.set(name, loading);
+    return loading;
+  }
+
+  private async playEffect(
+    name: EffectName,
+    volume: number,
+    playbackRate = 1,
+  ): Promise<void> {
+    try {
+      const buffer = await this.loadEffect(name);
+      if (!this.canPlay() || !this.context || !this.effectsGain) return;
+      const source = this.context.createBufferSource();
+      const gain = this.context.createGain();
+      source.buffer = buffer;
+      source.playbackRate.value = playbackRate;
+      gain.gain.value = volume;
+      source.connect(gain).connect(this.effectsGain);
+      source.start();
+    } catch {
+      // A missing effect should not interrupt the fishing game.
+    }
   }
 
   private currentStatus(): AudioStatus {
@@ -361,38 +425,6 @@ export class FishingAudio {
     oscillator.start(startAt);
     oscillator.stop(endAt + 0.02);
     if (destination !== this.effectsGain) this.trackBackgroundSource(oscillator);
-  }
-
-  private playNoiseSweep(
-    duration: number,
-    startFrequency: number,
-    endFrequency: number,
-    volume: number,
-  ): void {
-    if (!this.context || !this.effectsGain) return;
-    const now = this.context.currentTime;
-    const source = this.context.createBufferSource();
-    const filter = this.context.createBiquadFilter();
-    const gain = this.context.createGain();
-    source.buffer = this.createNoiseBuffer(duration + 0.05);
-    filter.type = "bandpass";
-    filter.Q.value = 0.75;
-    filter.frequency.setValueAtTime(startFrequency, now);
-    filter.frequency.exponentialRampToValueAtTime(endFrequency, now + duration);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(volume, now + 0.025);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    source.connect(filter).connect(gain).connect(this.effectsGain);
-    source.start(now);
-    source.stop(now + duration + 0.02);
-  }
-
-  private playSplash(intensity: number): void {
-    if (!this.context) return;
-    this.playNoiseSweep(0.34, 1650, 310, 0.31 * intensity);
-    const now = this.context.currentTime;
-    this.playTone(330, 0.008, 0.16, 0.13 * intensity, "sine", this.effectsGain, now);
-    this.playTone(220, 0.008, 0.25, 0.12 * intensity, "sine", this.effectsGain, now + 0.045);
   }
 
   private trackBackgroundSource(source: AudioScheduledSourceNode): void {
