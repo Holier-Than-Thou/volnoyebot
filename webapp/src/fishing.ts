@@ -557,7 +557,7 @@ function gameLoop(now: number): void {
   updateVisuals();
 
   if (now >= nextFightSplashAt) {
-    fishingAudio.playBobberSplash(holding ? 0.82 : 0.62);
+    fishingAudio.playBobberSplash(holding ? 1.08 : 0.88);
     nextFightSplashAt += 1320;
   }
 

@@ -4,6 +4,8 @@ type AudioStatusListener = (status: AudioStatus) => void;
 
 const AUDIO_PREFERENCE_KEY = "fishing-audio-enabled";
 const STEP_DURATION = 0.36;
+const MUSIC_VOLUME = 0.13;
+const AMBIENCE_VOLUME = 0.15;
 
 const midiFrequency = (note: number): number => 440 * 2 ** ((note - 69) / 12);
 
@@ -83,27 +85,32 @@ export class FishingAudio {
   async playCast(): Promise<void> {
     await this.unlock();
     if (!this.canPlay()) return;
-    this.playNoiseSweep(0.46, 1450, 260, 0.18);
-    this.playTone(176, 0.04, 0.34, 0.09, "triangle", this.effectsGain);
+    this.duckBackground(0.58);
+    this.playNoiseSweep(0.48, 2100, 380, 0.42);
+    this.playTone(330, 0.025, 0.3, 0.17, "triangle", this.effectsGain);
   }
 
   async playLandingSplash(): Promise<void> {
     await this.unlock();
     if (!this.canPlay()) return;
-    this.playSplash(0.9);
+    this.duckBackground(0.48);
+    this.playSplash(1.12);
   }
 
   async playBite(): Promise<void> {
     await this.unlock();
     if (!this.canPlay() || !this.context) return;
+    this.duckBackground(0.62);
     const now = this.context.currentTime;
-    this.playTone(784, 0.015, 0.13, 0.13, "square", this.effectsGain, now);
-    this.playTone(1046.5, 0.015, 0.18, 0.1, "square", this.effectsGain, now + 0.12);
+    this.playTone(659.25, 0.01, 0.16, 0.22, "square", this.effectsGain, now);
+    this.playTone(987.77, 0.01, 0.2, 0.2, "square", this.effectsGain, now + 0.13);
+    this.playTone(1318.51, 0.008, 0.12, 0.12, "square", this.effectsGain, now + 0.27);
   }
 
   playBobberSplash(intensity = 0.7): void {
     if (!this.canPlay()) return;
-    this.playSplash(Math.max(0.35, Math.min(1, intensity)));
+    this.duckBackground(0.34, 0.62);
+    this.playSplash(Math.max(0.55, Math.min(1.15, intensity)));
   }
 
   dispose(): void {
@@ -141,9 +148,9 @@ export class FishingAudio {
     this.effectsGain = this.context.createGain();
 
     this.masterGain.gain.value = 0.0001;
-    this.musicGain.gain.value = 0.13;
-    this.ambienceGain.gain.value = 0.15;
-    this.effectsGain.gain.value = 0.38;
+    this.musicGain.gain.value = MUSIC_VOLUME;
+    this.ambienceGain.gain.value = AMBIENCE_VOLUME;
+    this.effectsGain.gain.value = 0.76;
     this.musicGain.connect(this.masterGain);
     this.ambienceGain.connect(this.masterGain);
     this.effectsGain.connect(this.masterGain);
@@ -175,6 +182,20 @@ export class FishingAudio {
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueAtTime(Math.max(0.0001, this.masterGain.gain.value), now);
     this.masterGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, value), now + duration);
+  }
+
+  private duckBackground(duration: number, depth = 0.42): void {
+    if (!this.context || !this.musicGain || !this.ambienceGain) return;
+    const now = this.context.currentTime;
+    const restoreAt = now + duration;
+    const duck = (gain: GainNode, normalVolume: number): void => {
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), now);
+      gain.gain.exponentialRampToValueAtTime(normalVolume * depth, now + 0.025);
+      gain.gain.exponentialRampToValueAtTime(normalVolume, restoreAt);
+    };
+    duck(this.musicGain, MUSIC_VOLUME);
+    duck(this.ambienceGain, AMBIENCE_VOLUME);
   }
 
   private startBeds(): void {
@@ -368,10 +389,10 @@ export class FishingAudio {
 
   private playSplash(intensity: number): void {
     if (!this.context) return;
-    this.playNoiseSweep(0.31, 820, 150, 0.17 * intensity);
+    this.playNoiseSweep(0.34, 1650, 310, 0.31 * intensity);
     const now = this.context.currentTime;
-    this.playTone(190, 0.01, 0.2, 0.1 * intensity, "sine", this.effectsGain, now);
-    this.playTone(118, 0.01, 0.28, 0.08 * intensity, "sine", this.effectsGain, now + 0.055);
+    this.playTone(330, 0.008, 0.16, 0.13 * intensity, "sine", this.effectsGain, now);
+    this.playTone(220, 0.008, 0.25, 0.12 * intensity, "sine", this.effectsGain, now + 0.045);
   }
 
   private trackBackgroundSource(source: AudioScheduledSourceNode): void {
